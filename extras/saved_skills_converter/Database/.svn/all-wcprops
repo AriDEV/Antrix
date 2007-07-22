@@ -1,0 +1,47 @@
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database
+END
+DatabaseEnv.h
+K 25
+svn:wc:ra_dav:version-url
+V 77
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/DatabaseEnv.h
+END
+Database.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/Database.cpp
+END
+QueryResult.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/QueryResult.cpp
+END
+Field.h
+K 25
+svn:wc:ra_dav:version-url
+V 71
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/Field.h
+END
+Database.h
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/Database.h
+END
+QueryResult.h
+K 25
+svn:wc:ra_dav:version-url
+V 77
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/QueryResult.h
+END
+DataStore.h
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/DataStore.h
+END

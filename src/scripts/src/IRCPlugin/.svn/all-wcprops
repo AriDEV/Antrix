@@ -1,0 +1,53 @@
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svn/ascent/!svn/ver/909/src/scripts/src/IRCPlugin
+END
+IRCCommands.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/ascent/!svn/ver/409/src/scripts/src/IRCPlugin/IRCCommands.cpp
+END
+IRCPlugin.h
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/ascent/!svn/ver/409/src/scripts/src/IRCPlugin/IRCPlugin.h
+END
+PerfCounters.h
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/ascent/!svn/ver/409/src/scripts/src/IRCPlugin/PerfCounters.h
+END
+CPUMem.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/ascent/!svn/ver/409/src/scripts/src/IRCPlugin/CPUMem.cpp
+END
+IRCSocket.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/ascent/!svn/ver/409/src/scripts/src/IRCPlugin/IRCSocket.cpp
+END
+CPUMem.h
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/ascent/!svn/ver/409/src/scripts/src/IRCPlugin/CPUMem.h
+END
+IRCSocket.h
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/ascent/!svn/ver/409/src/scripts/src/IRCPlugin/IRCSocket.h
+END
+IRCPlugin.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/ascent/!svn/ver/909/src/scripts/src/IRCPlugin/IRCPlugin.cpp
+END

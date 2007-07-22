@@ -1,0 +1,41 @@
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/ascent/!svn/ver/676/src/scripts/src/GossipScripts
+END
+Setup.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/ascent/!svn/ver/21/src/scripts/src/GossipScripts/Setup.cpp
+END
+Setup.h
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svn/ascent/!svn/ver/21/src/scripts/src/GossipScripts/Setup.h
+END
+Gossip_Innkeepers.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/ascent/!svn/ver/234/src/scripts/src/GossipScripts/Gossip_Innkeepers.cpp
+END
+GuardGossip.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/ascent/!svn/ver/676/src/scripts/src/GossipScripts/GuardGossip.cpp
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/ascent/!svn/ver/168/src/scripts/src/GossipScripts/Makefile.am
+END
+Gossip_Battlemaster.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/ascent/!svn/ver/234/src/scripts/src/GossipScripts/Gossip_Battlemaster.cpp
+END

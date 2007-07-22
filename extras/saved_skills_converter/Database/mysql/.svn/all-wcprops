@@ -1,0 +1,143 @@
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql
+END
+my_pthread.h
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/my_pthread.h
+END
+errmsg.h
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/errmsg.h
+END
+my_alloc.h
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/my_alloc.h
+END
+mysqld_ername.h
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/mysqld_ername.h
+END
+config-win.h
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/config-win.h
+END
+m_ctype.h
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/m_ctype.h
+END
+mysql_embed.h
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/mysql_embed.h
+END
+Libmysql.def
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/Libmysql.def
+END
+mysql_com.h
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/mysql_com.h
+END
+my_global.h
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/my_global.h
+END
+mysql.h
+K 25
+svn:wc:ra_dav:version-url
+V 77
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/mysql.h
+END
+libmysqld.def
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/libmysqld.def
+END
+my_getopt.h
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/my_getopt.h
+END
+typelib.h
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/typelib.h
+END
+mysql_version.h
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/mysql_version.h
+END
+raid.h
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/raid.h
+END
+my_list.h
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/my_list.h
+END
+dbug.h
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/dbug.h
+END
+m_string.h
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/m_string.h
+END
+mysqld_error.h
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/mysqld_error.h
+END
+my_sys.h
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/my_sys.h
+END
+mysql_time.h
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/mysql_time.h
+END
+my_dbug.h
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/svn/ascent/!svn/ver/671/extras/saved_skills_converter/Database/mysql/my_dbug.h
+END

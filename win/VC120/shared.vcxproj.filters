@@ -1,0 +1,236 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Database">
+      <UniqueIdentifier>{6e097d4e-c137-4de3-8802-1538d00aec29}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Database\DataStores">
+      <UniqueIdentifier>{173b36f4-7a56-4793-b73b-2e1920fc0deb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Database\Database Impl">
+      <UniqueIdentifier>{decd8635-b28a-4831-b813-bb1576036eff}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Log">
+      <UniqueIdentifier>{d48cdbf4-7cd9-43e1-8192-12177897b01b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Util">
+      <UniqueIdentifier>{059e87a5-ab62-41e3-99a9-51d6c2844871}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Config">
+      <UniqueIdentifier>{c628651b-209b-4866-b6db-67ba07611da0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Auth">
+      <UniqueIdentifier>{3aa8e2b1-764f-479e-84fb-06021c623145}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Network">
+      <UniqueIdentifier>{8cc717df-a674-442f-8a5d-5f7d6f622a93}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Threading">
+      <UniqueIdentifier>{5029e927-534d-413c-8166-006c59888c59}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\src\shared\Database\Database.cpp">
+      <Filter>Database</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Database\dbcfile.cpp">
+      <Filter>Database</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Database\DBC.cpp">
+      <Filter>Database\DataStores</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Database\DBCStores.cpp">
+      <Filter>Database\DataStores</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Database\impl\MySQLDatabase.cpp">
+      <Filter>Database\Database Impl</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Database\impl\PostgreDatabase.cpp">
+      <Filter>Database\Database Impl</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Log.cpp">
+      <Filter>Log</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\CallBack.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\CrashHandler.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\MemoryLeaks.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\MersenneTwister.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\StackWalker.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\TextLogger.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Util.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Config\Config.cpp">
+      <Filter>Config</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Auth\BigNumber.cpp">
+      <Filter>Auth</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\crc32.cpp">
+      <Filter>Auth</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Auth\Sha1.cpp">
+      <Filter>Auth</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Auth\WowCrypt.cpp">
+      <Filter>Auth</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Network\Socket.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Network\SocketMgrWin32.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Network\SocketOpsWin32.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Network\SocketWin32.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\Threading\Mutex.cpp">
+      <Filter>Threading</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\shared\antrix_getopt.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\src\shared\Database\Database.h">
+      <Filter>Database</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Database\DatabaseEnv.h">
+      <Filter>Database</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Database\dbcfile.h">
+      <Filter>Database</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Database\Field.h">
+      <Filter>Database</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Database\DataStore.h">
+      <Filter>Database\DataStores</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Database\DBC.h">
+      <Filter>Database\DataStores</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Database\DBCStores.h">
+      <Filter>Database\DataStores</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Database\impl\MySQLDatabase.h">
+      <Filter>Database\Database Impl</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Database\impl\PostgreDatabase.h">
+      <Filter>Database\Database Impl</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Log.h">
+      <Filter>Log</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\ByteBuffer.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\CallBack.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\CrashHandler.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Errors.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\LocationVector.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\MemoryLeaks.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\MersenneTwister.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\PreallocatedQueue.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Singleton.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\StackWalker.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\TextLogger.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Timer.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Util.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\WoWGuid.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Config\Config.h">
+      <Filter>Config</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Config\ConfigEnv.h">
+      <Filter>Config</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Auth\BigNumber.h">
+      <Filter>Auth</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\crc32.h">
+      <Filter>Auth</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Auth\Sha1.h">
+      <Filter>Auth</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Auth\WowCrypt.h">
+      <Filter>Auth</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Network\ListenSocketWin32.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Network\Network.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Network\Socket.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Network\SocketDefines.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Network\SocketMgrWin32.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Network\SocketOps.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Threading\Guard.h">
+      <Filter>Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Threading\LockedQueue.h">
+      <Filter>Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Threading\Mutex.h">
+      <Filter>Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Threading\Threading.h">
+      <Filter>Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\Threading\ThreadStarter.h">
+      <Filter>Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\shared\antrix_getopt.h" />
+    <ClInclude Include="..\..\src\shared\AuthCodes.h" />
+    <ClInclude Include="..\..\src\shared\Common.h" />
+    <ClInclude Include="..\..\src\shared\Storage.h" />
+  </ItemGroup>
+</Project>

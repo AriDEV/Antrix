@@ -1,0 +1,188 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{90297C34-F231-4DF4-848E-A74BCC0E40ED}</ProjectGuid>
+    <RootNamespace>shared</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset>v120</PlatformToolset>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset>v120</PlatformToolset>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>12.0.30501.0</_ProjectFileVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>.\shared___Win32_Release\</OutDir>
+    <IntDir>.\shared___Win32_Release\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>.\shared___Win32_Debug\</OutDir>
+    <IntDir>.\shared___Win32_Debug\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <Optimization>Full</Optimization>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <AdditionalIncludeDirectories>..\..\dep\include;..\..\src\shared;..\..\src\game;..\..\src\realmlist;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <StringPooling>true</StringPooling>
+      <MinimalRebuild>false</MinimalRebuild>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <FunctionLevelLinking>false</FunctionLevelLinking>
+      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+      <PrecompiledHeader />
+      <PrecompiledHeaderOutputFile>.\shared___Win32_Release/shared.pch</PrecompiledHeaderOutputFile>
+      <AssemblerListingLocation>.\shared___Win32_Release/</AssemblerListingLocation>
+      <ObjectFileName>.\shared___Win32_Release/</ObjectFileName>
+      <ProgramDataBaseFileName>.\shared___Win32_Release/</ProgramDataBaseFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <CompileAs>Default</CompileAs>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0409</Culture>
+    </ResourceCompile>
+    <Lib>
+      <OutputFile>.\Release\shared.lib</OutputFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <AdditionalIncludeDirectories>..\..\dep\include;..\..\src\shared;..\..\src\game;..\..\src\realmlist;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <PrecompiledHeader />
+      <PrecompiledHeaderOutputFile>.\shared___Win32_Debug/shared.pch</PrecompiledHeaderOutputFile>
+      <AssemblerListingLocation>.\shared___Win32_Debug/</AssemblerListingLocation>
+      <ObjectFileName>.\shared___Win32_Debug/</ObjectFileName>
+      <ProgramDataBaseFileName>.\shared___Win32_Debug/</ProgramDataBaseFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <CompileAs>Default</CompileAs>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0409</Culture>
+    </ResourceCompile>
+    <Lib>
+      <OutputFile>.\shared___Win32_Debug\shared.lib</OutputFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\src\shared\antrix_getopt.cpp" />
+    <ClCompile Include="..\..\src\shared\Auth\BigNumber.cpp" />
+    <ClCompile Include="..\..\src\shared\Auth\Sha1.cpp" />
+    <ClCompile Include="..\..\src\shared\Auth\WowCrypt.cpp" />
+    <ClCompile Include="..\..\src\shared\CallBack.cpp" />
+    <ClCompile Include="..\..\src\shared\Config\Config.cpp" />
+    <ClCompile Include="..\..\src\shared\CrashHandler.cpp" />
+    <ClCompile Include="..\..\src\shared\crc32.cpp" />
+    <ClCompile Include="..\..\src\shared\Database\Database.cpp" />
+    <ClCompile Include="..\..\src\shared\Database\DBC.cpp" />
+    <ClCompile Include="..\..\src\shared\Database\dbcfile.cpp" />
+    <ClCompile Include="..\..\src\shared\Database\DBCStores.cpp" />
+    <ClCompile Include="..\..\src\shared\Database\impl\MySQLDatabase.cpp" />
+    <ClCompile Include="..\..\src\shared\Database\impl\PostgreDatabase.cpp" />
+    <ClCompile Include="..\..\src\shared\Log.cpp" />
+    <ClCompile Include="..\..\src\shared\MemoryLeaks.cpp" />
+    <ClCompile Include="..\..\src\shared\MersenneTwister.cpp" />
+    <ClCompile Include="..\..\src\shared\Network\Socket.cpp" />
+    <ClCompile Include="..\..\src\shared\Network\SocketMgrWin32.cpp" />
+    <ClCompile Include="..\..\src\shared\Network\SocketOpsWin32.cpp" />
+    <ClCompile Include="..\..\src\shared\Network\SocketWin32.cpp" />
+    <ClCompile Include="..\..\src\shared\StackWalker.cpp" />
+    <ClCompile Include="..\..\src\shared\TextLogger.cpp" />
+    <ClCompile Include="..\..\src\shared\Threading\Mutex.cpp" />
+    <ClCompile Include="..\..\src\shared\Util.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\src\shared\antrix_getopt.h" />
+    <ClInclude Include="..\..\src\shared\AuthCodes.h" />
+    <ClInclude Include="..\..\src\shared\Auth\BigNumber.h" />
+    <ClInclude Include="..\..\src\shared\Auth\Sha1.h" />
+    <ClInclude Include="..\..\src\shared\Auth\WowCrypt.h" />
+    <ClInclude Include="..\..\src\shared\ByteBuffer.h" />
+    <ClInclude Include="..\..\src\shared\CallBack.h" />
+    <ClInclude Include="..\..\src\shared\Common.h" />
+    <ClInclude Include="..\..\src\shared\Config\Config.h" />
+    <ClInclude Include="..\..\src\shared\Config\ConfigEnv.h" />
+    <ClInclude Include="..\..\src\shared\CrashHandler.h" />
+    <ClInclude Include="..\..\src\shared\crc32.h" />
+    <ClInclude Include="..\..\src\shared\Database\Database.h" />
+    <ClInclude Include="..\..\src\shared\Database\DatabaseEnv.h" />
+    <ClInclude Include="..\..\src\shared\Database\DataStore.h" />
+    <ClInclude Include="..\..\src\shared\Database\DBC.h" />
+    <ClInclude Include="..\..\src\shared\Database\dbcfile.h" />
+    <ClInclude Include="..\..\src\shared\Database\DBCStores.h" />
+    <ClInclude Include="..\..\src\shared\Database\Field.h" />
+    <ClInclude Include="..\..\src\shared\Database\impl\MySQLDatabase.h" />
+    <ClInclude Include="..\..\src\shared\Database\impl\PostgreDatabase.h" />
+    <ClInclude Include="..\..\src\shared\Errors.h" />
+    <ClInclude Include="..\..\src\shared\LocationVector.h" />
+    <ClInclude Include="..\..\src\shared\Log.h" />
+    <ClInclude Include="..\..\src\shared\MemoryLeaks.h" />
+    <ClInclude Include="..\..\src\shared\MersenneTwister.h" />
+    <ClInclude Include="..\..\src\shared\Network\ListenSocketWin32.h" />
+    <ClInclude Include="..\..\src\shared\Network\Network.h" />
+    <ClInclude Include="..\..\src\shared\Network\Socket.h" />
+    <ClInclude Include="..\..\src\shared\Network\SocketDefines.h" />
+    <ClInclude Include="..\..\src\shared\Network\SocketMgrWin32.h" />
+    <ClInclude Include="..\..\src\shared\Network\SocketOps.h" />
+    <ClInclude Include="..\..\src\shared\PreallocatedQueue.h" />
+    <ClInclude Include="..\..\src\shared\Singleton.h" />
+    <ClInclude Include="..\..\src\shared\StackWalker.h" />
+    <ClInclude Include="..\..\src\shared\Storage.h" />
+    <ClInclude Include="..\..\src\shared\TextLogger.h" />
+    <ClInclude Include="..\..\src\shared\Threading\Guard.h" />
+    <ClInclude Include="..\..\src\shared\Threading\LockedQueue.h" />
+    <ClInclude Include="..\..\src\shared\Threading\Mutex.h" />
+    <ClInclude Include="..\..\src\shared\Threading\Threading.h" />
+    <ClInclude Include="..\..\src\shared\Threading\ThreadStarter.h" />
+    <ClInclude Include="..\..\src\shared\Timer.h" />
+    <ClInclude Include="..\..\src\shared\Util.h" />
+    <ClInclude Include="..\..\src\shared\WoWGuid.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

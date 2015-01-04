@@ -1,0 +1,180 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{59918FF8-A77F-4AAB-BD9A-3ABC446C23F8}</ProjectGuid>
+    <RootNamespace>gamemonkey</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset>v120</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset>v120</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>12.0.30501.0</_ProjectFileVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>.\gamemonkey___Win32_Debug\</OutDir>
+    <IntDir>.\gamemonkey___Win32_Debug\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>.\gamemonkey___Win32_Release\</OutDir>
+    <IntDir>.\gamemonkey___Win32_Release\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <AdditionalIncludeDirectories>..\..\dep\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <PrecompiledHeader />
+      <PrecompiledHeaderOutputFile>.\gamemonkey___Win32_Debug/gamemonkey.pch</PrecompiledHeaderOutputFile>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Lib>
+      <OutputFile>$(OutDir)gamemonkey.lib</OutputFile>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <AdditionalIncludeDirectories>..\..\dep\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <StringPooling>true</StringPooling>
+      <MinimalRebuild>false</MinimalRebuild>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <FunctionLevelLinking>false</FunctionLevelLinking>
+      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+      <PrecompiledHeader />
+      <PrecompiledHeaderOutputFile>.\gamemonkey___Win32_Release/gamemonkey.pch</PrecompiledHeaderOutputFile>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Lib>
+      <OutputFile>$(OutDir)gamemonkey.lib</OutputFile>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\dep\src\gm\gmArrayLib.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmArraySimple.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmByteCode.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmByteCodeGen.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmCall.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmCodeGen.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmCodeGenHooks.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmCodeTree.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmCrc.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmDebug.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmFunctionObject.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmGCRoot.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmGCRootUtil.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmHash.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmHelpers.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmIncGC.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmLibHooks.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmListDouble.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmLog.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmMachine.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmMachineLib.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmMathLib.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmMem.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmMemChain.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmMemFixed.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmMemFixedSet.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmOperators.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmParser.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmScanner.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmStream.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmStreamBuffer.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmStringLib.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmStringObject.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmSystemLib.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmTableObject.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmThread.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmUserObject.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmUtil.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmVariable.cpp" />
+    <ClCompile Include="..\..\dep\src\gm\gmVector3Lib.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\dep\src\gm\gmArrayLib.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmArraySimple.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmByteCode.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmByteCodeGen.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmCall.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmCodeGen.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmCodeGenHooks.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmCodeTree.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmConfig.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmCrc.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmDebug.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmDebugger.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmFunctionObject.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmGCRoot.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmGCRootUtil.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmHash.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmHelpers.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmIncGC.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmIterator.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmLibHooks.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmListDouble.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmLog.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmMachine.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmMachineLib.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmMathLib.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmMem.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmMemChain.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmMemFixed.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmMemFixedSet.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmOperators.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmParser.cpp.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmScanner.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmStream.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmStreamBuffer.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmStringLib.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmStringObject.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmSystemLib.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmTableObject.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmThread.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmUserObject.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmUtil.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmVariable.h" />
+    <ClInclude Include="..\..\dep\src\gm\gmVector3Lib.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

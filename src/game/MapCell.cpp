@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,6 +33,9 @@ void MapCell::Init(uint32 x, uint32 y, uint32 mapid, MapMgr *mapmgr)
 	_active = false;
 	_loaded = false;
 	_playerCount = 0;
+	_x=x;
+	_y=y;
+	_unloadpending=false;
 }
 
 void MapCell::AddObject(Object *obj)
@@ -56,6 +64,10 @@ void MapCell::SetActivity(bool state)
 			if(!(*itr)->Active && (*itr)->CanActivate())
 				(*itr)->Activate(_mapmgr);
 		}
+
+		if(_unloadpending)
+			CancelPendingUnload();
+
 	} else if(_active && !state)
 	{
 		// Move all objects from active set.
@@ -64,6 +76,9 @@ void MapCell::SetActivity(bool state)
 			if((*itr)->Active)
 				(*itr)->Deactivate(_mapmgr);
 		}
+
+		if(sWorld.map_unload_time && !_unloadpending)
+			QueueUnloadPending();
 	}
 
 	_active = state; 
@@ -75,6 +90,24 @@ void MapCell::RemoveObjects()
 	uint32 count = 0;
 	//uint32 ltime = getMSTime();
 
+	/* delete objects in pending respawn state */
+	for(itr = _respawnObjects.begin(); itr != _respawnObjects.end(); ++itr)
+	{
+		switch((*itr)->GetTypeId())
+		{
+		case TYPEID_UNIT: {
+			((Creature*)*itr)->m_respawnCell=NULL;
+			delete ((Creature*)*itr);
+			}break;
+
+		case TYPEID_GAMEOBJECT: {
+			((GameObject*)*itr)->m_respawnCell=NULL;
+			delete ((GameObject*)*itr);
+			}break;
+		}
+	}
+	_respawnObjects.clear();
+
 	//This time it's simpler! We just remove everything :)
 	for(itr = _objects.begin(); itr != _objects.end(); )
 	{
@@ -84,12 +117,19 @@ void MapCell::RemoveObjects()
 
 		itr++;
 
+		if(_unloadpending && UINT32_LOPART(obj->GetGUIDHigh())==HIGHGUID_TRANSPORTER)
+			continue;
+
+		if(_unloadpending && obj->GetTypeId()==TYPEID_CORPSE)
+			continue;
+
+		if(obj->Active)
+			obj->Deactivate(_mapmgr);
+
 		if (obj->IsInWorld())
 			obj->RemoveFromWorld();
-  
-		if (obj->IsPlayer())
-			delete ((Player*)obj);
-		else if (obj->GetTypeId() == TYPEID_UNIT)
+
+		if (obj->GetTypeId() == TYPEID_UNIT)
 		{
 			if(obj->IsPet())
 				delete ((Pet*)(obj));
@@ -98,12 +138,10 @@ void MapCell::RemoveObjects()
 		}
 		else if (obj->GetTypeId() == TYPEID_GAMEOBJECT)
 		{
-			if(UINT32_LOPART(obj->GetGUIDHigh())==HIGHGUID_TRANSPORTER)
-			{}
+			if(obj->GetGUIDHigh()==HIGHGUID_TRANSPORTER)
+				delete ((Transporter*)obj);
 			else
-			{
 				delete ((GameObject*)obj);
-			}
 		}
 		else if (obj->GetTypeId() == TYPEID_DYNAMICOBJECT)
 			delete ((DynamicObject*)obj);
@@ -168,4 +206,35 @@ void MapCell::LoadObjects(CellSpawns * sp, Instance_Map_InstanceId_Holder * pIns
 				delete go;//missing proto or smth of that kind
 		}
 	}
+}
+
+
+void MapCell::QueueUnloadPending()
+{
+	if(_unloadpending)
+		return;
+
+	_unloadpending = true;
+	//Log.Debug("MapCell", "Queueing pending unload of cell %u %u", _x, _y);
+	sEventMgr.AddEvent(_mapmgr, &MapMgr::UnloadCell,(uint32)_x,(uint32)_y,MAKE_CELL_EVENT(_x,_y),sWorld.map_unload_time * 1000,1,0);
+}
+
+void MapCell::CancelPendingUnload()
+{
+	//Log.Debug("MapCell", "Cancelling pending unload of cell %u %u", _x, _y);
+	if(!_unloadpending)
+		return;
+
+	sEventMgr.RemoveEvents(_mapmgr,MAKE_CELL_EVENT(_x,_y));
+}
+
+void MapCell::Unload()
+{
+	//Log.Debug("MapCell", "Unloading cell %u %u", _x, _y);
+	ASSERT(_unloadpending);
+	if(_active)
+		return;
+
+	RemoveObjects();
+	_unloadpending=false;
 }

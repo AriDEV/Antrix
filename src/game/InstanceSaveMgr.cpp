@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -33,6 +38,13 @@ InstanceSavingManagement::~InstanceSavingManagement()
 		delete p;
 	}
 	mInstanceInfoList.clear();
+    map<uint32, InactiveInstance*>::iterator itr2;
+    for (itr2 = inactiveInstances.begin();itr2 != inactiveInstances.end(); itr2++)
+	{
+		InactiveInstance *p = itr2->second;
+		delete p;
+	}
+    inactiveInstances.clear();
 }
 
 void InstanceSavingManagement::BuildSavedInstancesForPlayer(Player *pPlayer)
@@ -265,7 +277,6 @@ void InstanceSavingManagement::LoadSavedInstances()
 
 	if(result==NULL)
 	{
-		sLog.outString("Saved Instances: None");
 		return;
 	}
 
@@ -292,6 +303,7 @@ void InstanceSavingManagement::LoadSavedInstances()
 		sInstanceSavingManager.RepopulateSavedData(fields[1].GetUInt32(), fields[0].GetUInt32(), fields[2].GetString(), fields[3].GetString());
 
 	} while( result->NextRow() );
+	Log.Notice("InstanceSaveMgr", "%u saved instances loaded.", result->GetRowCount());
 	delete result;
 }
 
@@ -597,34 +609,37 @@ bool Instance_Map_Info_Holder::RemovePlayer(uint64 guid)
 	InstanceIdList::iterator itr, itr2;
 	for (itr = mInstanceIdList.begin();itr != mInstanceIdList.end();)
 	{
-		 itr2 = itr;
-		 ++itr;
-		 Instance_Map_InstanceId_Holder *p = itr2->second;
-         if(!p->GetGroupSignature() && GetMapInfo()->type != INSTANCE_RAID && p->GetDifficulty() != MODE_HEROIC) //only resets solo instances
-		 {
-			 MapMgr * mapMgr = sWorldCreator.GetInstanceByGroupInstanceId(itr2->first, GetMapInfo()->mapid, true);
-			 if(mapMgr)
-			 {
-				 // dont reset an instnace with players inside.. dunno how they got in there anyway :P
-				 if(mapMgr->HasPlayers())
-				 {
-					 Player * pPlayer = objmgr.GetPlayer(guid);
-					 if(pPlayer) 
-						 sChatHandler.SystemMessageToPlr(pPlayer,"You are trying to reset a instance when there are still players inside");
-					 instanceIdListMutex.Release();
-                     return false;
-				 }
-			 }
-			 result = p->RemovePlayer(guid);
-			 if(result)
-			 {
-				 sWorldCreator.DeleteInstance(itr2->first, m_pMapInfo->mapid);
-				 delete p;
-				 sLog.outDebug("Removing instance from the itr\n");
-				 mInstanceIdList.erase(itr2);
-				 result2 = true;
-			 }
-		 }
+		itr2 = itr;
+		++itr;
+		Instance_Map_InstanceId_Holder *p = itr2->second;
+
+        MapMgr * mapMgr = sWorldCreator.ISMGetInstanceBeforeRemoval(itr2->first, GetMapInfo()->mapid, true);
+		if(mapMgr)
+		{
+			// dont reset an instnace with players inside.. dunno how they got in there anyway :P
+			if(mapMgr->HasPlayers())
+			{
+				Player * pPlayer = objmgr.GetPlayer(guid);
+				if(pPlayer) 
+					sChatHandler.SystemMessageToPlr(pPlayer,"You are trying to reset a instance when there are still players inside");
+				instanceIdListMutex.Release();
+				return false;
+			}
+		}
+
+        if(!p->GetGroupSignature() && GetMapInfo()->type != INSTANCE_RAID && p->GetDifficulty() != MODE_HEROIC) //only resets solo instances
+		{
+			result = p->RemovePlayer(guid);
+			if(result)
+			{
+				sWorldCreator.DeleteInstance(itr2->first, m_pMapInfo->mapid);
+				delete p;
+				sLog.outDebug("Removing instance from the itr\n");
+				mInstanceIdList.erase(itr2);
+				result2 = true;
+				continue;
+			}
+		}
 	}
     instanceIdListMutex.Release();
 	return result2;
@@ -634,33 +649,34 @@ bool Instance_Map_Info_Holder::RemoveGroup(uint32 iGroupSignature)
 	bool result = false;
 	bool result2 = false;
 
-    instanceIdListMutex.Acquire();
+	instanceIdListMutex.Acquire();
 	InstanceIdList::iterator itr, itr2;
 	for (itr = mInstanceIdList.begin();itr != mInstanceIdList.end();)
 	{
 		 itr2 = itr;
 		 ++itr;
-		Instance_Map_InstanceId_Holder *p = itr2->second;
+		 Instance_Map_InstanceId_Holder *p = itr2->second;
 		 if(p->GetGroupSignature() && p->GetGroupSignature() == iGroupSignature) //only resets this group instance ids
 		 {
-             if(p->GetDifficulty() == MODE_HEROIC || p->GetMapInfo()->type == INSTANCE_RAID) { continue; }
-			 MapMgr * mapMgr = sWorldCreator.GetInstanceByGroupInstanceId(itr2->first, GetMapInfo()->mapid, true);
+             MapMgr * mapMgr = sWorldCreator.ISMGetInstanceBeforeRemoval(itr2->first, GetMapInfo()->mapid, true);
 			 if(mapMgr)
 			 {
 				 // dont reset an instnace with players inside.. dunno how they got in there anyway :P
 				 if(mapMgr->HasPlayers())
 				 {
-					Group *pGroup =  objmgr.GetGroupById(iGroupSignature);
-					if(pGroup)
-					{
-						Player * pPlayer = pGroup->GetLeader();
-						if(pPlayer) 
-							sChatHandler.SystemMessageToPlr(pPlayer,"You are trying to reset a instance when there are still players inside");
-					}
-                     instanceIdListMutex.Release();
+					 Group *pGroup =  objmgr.GetGroupById(iGroupSignature);
+					 if(pGroup)
+					 {
+						 Player * pPlayer = pGroup->GetLeader();
+						 if(pPlayer) 
+							 sChatHandler.SystemMessageToPlr(pPlayer,"You are trying to reset a instance when there are still players inside");
+					 }
+					 instanceIdListMutex.Release();
 					 return false;
 				 }
 			 }
+
+             if(p->GetDifficulty() == MODE_HEROIC || p->GetMapInfo()->type == INSTANCE_RAID) { continue; }
 			 result = p->ClearAllPlayers();
 			 if(result)
 			 {
@@ -669,6 +685,7 @@ bool Instance_Map_Info_Holder::RemoveGroup(uint32 iGroupSignature)
 				 sLog.outDebug("Removing group instance from the itr\n");
 				 mInstanceIdList.erase(itr2);
 				 result2 = true;
+				 continue;
 			 }
 		 }
 	}
@@ -715,7 +732,7 @@ bool Instance_Map_Info_Holder::FindPlayer(uint64 guid, uint32 iGroupSignature, u
 bool Instance_Map_Info_Holder::IsPlayerSavedToInstanceId(uint64 guid, uint32 instanceid)
 {
     instanceIdListMutex.Acquire();
-	InstanceIdList::iterator itr = mInstanceIdList.find( instanceid );
+	InstanceIdList::const_iterator itr = mInstanceIdList.find( instanceid );
 	if(itr != mInstanceIdList.end())
 	{
 		Instance_Map_InstanceId_Holder *p = itr->second;
@@ -894,16 +911,23 @@ void InstanceSavingManagement::AddInactiveInstance(InactiveInstance * ia)
 
 void InstanceSavingManagement::RemoveSavedInstance(uint32 instance_id)
 {
+    inactiveInstancesMutex.Acquire();
 	map<uint32, InactiveInstance*>::iterator itr = inactiveInstances.find(instance_id);
-	if(itr == inactiveInstances.end()) return;
+	if(itr == inactiveInstances.end()) 
+    {
+        inactiveInstancesMutex.Release();
+        return;
+    }
 
 	delete itr->second;
 	inactiveInstances.erase(itr);
+    inactiveInstancesMutex.Release();
 }
 
 void InstanceSavingManagement::CreateInactiveInstance(MapMgr * mgr)
 {
 	// called on mapmgr expire..
+
 	InactiveInstance * ia = new InactiveInstance;
 	ia->Creation = mgr->CreationTime;
 	ia->InstanceId = mgr->GetInstanceID();

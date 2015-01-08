@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Auction House System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -18,7 +23,6 @@
 void Auction::DeleteFromDB()
 {
 	CharacterDatabase.WaitExecute("DELETE FROM auctions WHERE auctionId = %u", Id);
-	CharacterDatabase.WaitExecute("DELETE FROM bids WHERE Id = %u", Id);
 }
 
 void Auction::SaveToDB(uint32 AuctionHouseId)
@@ -297,6 +301,9 @@ void AuctionHouse::SendBidListPacket(Player * plr, WorldPacket * packet)
 			++count;
 		}			
 	}
+#ifdef USING_BIG_ENDIAN
+	swap32((uint32*)&data.contents()[0]);
+#endif
 	data << count;
 	auctionLock.ReleaseReadLock();
 	plr->GetSession()->SendPacket(&data);
@@ -325,6 +332,9 @@ void AuctionHouse::SendOwnerListPacket(Player * plr, WorldPacket * packet)
 		}			
 	}
 	data << count;
+#ifdef USING_BIG_ENDIAN
+	swap32((uint32*)&data.contents()[0]);
+#endif
 	auctionLock.ReleaseReadLock();
 	plr->GetSession()->SendPacket(&data);
 }
@@ -361,7 +371,7 @@ void WorldSession::HandleAuctionPlaceBid( WorldPacket & recv_data )
 	// Find Item
 	AuctionHouse * ah = pCreature->auctionHouse;
 	Auction * auct = ah->GetAuction(auction_id);
-	if(auct == 0/* || auct->Owner == _player->GetGUID()*/)
+	if(auct == 0 || !auct->Owner || !_player || auct->Owner == _player->GetGUID())
 		return;
 
 	if(auct->HighestBid > price && price != auct->BuyoutPrice)
@@ -462,7 +472,7 @@ void WorldSession::HandleAuctionSellItem( WorldPacket & recv_data )
 	// Re-save item without its owner.
 	pItem->RemoveFromWorld();
 	pItem->SetOwner(0);
-	pItem->SaveToDB(INVENTORY_SLOT_NOT_SET, 0);
+	pItem->SaveToDB(INVENTORY_SLOT_NOT_SET, 0,true);
 
 	// Create auction structure.
 	Auction * auct = new Auction;
@@ -539,13 +549,6 @@ void AuctionHouse::SendAuctionList(Player * plr, WorldPacket * packet)
 		if(itr->second->Deleted) continue;
 		proto = itr->second->pItem->GetProto();
 
-		// Page system.
-		current_index++;
-		if(start_index && current_index < start_index) continue;
-		++counted_items;
-		if(counted_items > 50)
-			continue;
-
 		// Check the auction for parameters
 
 		// inventory type
@@ -595,6 +598,13 @@ void AuctionHouse::SendAuctionList(Player * plr, WorldPacket * packet)
 			if(proto->Class == 2 && proto->SubClass && !(plr->GetWeaponProficiency()&(((uint32)(1))<<proto->SubClass)))
 				continue;
 		}
+		
+        // Page system.
+        ++counted_items;
+        if(counted_items >= start_index + 50)
+            continue;
+        current_index++;
+        if(start_index && current_index < start_index) continue;
 
 		// all checks passed -> add to packet.
 		itr->second->AddToPacket(data);
@@ -602,7 +612,10 @@ void AuctionHouse::SendAuctionList(Player * plr, WorldPacket * packet)
 	}
 	
 	// total count
-	data << uint32(start_index + counted_items);
+	data << uint32(1 + counted_items);
+#ifdef USING_BIG_ENDIAN
+	swap32((uint32*)&data.contents()[0]);
+#endif
 
 	auctionLock.ReleaseReadLock();
 	plr->GetSession()->SendPacket(&data);
@@ -639,6 +652,7 @@ void AuctionHouse::LoadAuctions()
 		Item * pItem = objmgr.LoadItem(fields++->GetUInt64());
 		if(!pItem)
 		{
+			CharacterDatabase.Execute("DELETE FROM auctions WHERE auctionId=%u",auct->Id);
 			delete auct;
 			continue;
 		}

@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Main World System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -37,7 +42,13 @@ enum Rates
 	RATE_POWER1,	
 	RATE_POWER2,	
 	RATE_POWER3,	
-	RATE_DROP,
+	RATE_DROP0, // separate rates for each quality level
+	RATE_DROP1,
+	RATE_DROP2,
+	RATE_DROP3,
+	RATE_DROP4,
+	RATE_DROP5,
+	RATE_DROP6,
 	RATE_MONEY,
 	RATE_XP,
 	RATE_RESTXP,
@@ -45,6 +56,8 @@ enum Rates
 	RATE_HONOR,
 	RATE_QUESTREPUTATION,
 	RATE_KILLREPUTATION,
+	RATE_SKILLCHANCE,
+	RATE_SKILLRATE,
 	MAX_RATES
 };		
 
@@ -342,6 +355,7 @@ public:
 	void SendWorldWideScreenText(const char *text, WorldSession *self = 0);
 	void SendGlobalMessage(WorldPacket *packet, WorldSession *self = 0);
 	void SendZoneMessage(WorldPacket *packet, uint32 zoneid, WorldSession *self = 0);
+	void SendFactionMessage(WorldPacket *packet, uint8 teamId);
 
 	inline void SetStartTime(uint32 val) { m_StartTime = val; }
 	inline uint32 GetUptime(void) { return (uint32)time(NULL) - m_StartTime; }
@@ -440,6 +454,8 @@ public:
 	void EventDeleteBattleground(Battleground * BG);
 	uint32 mInWorldPlayerCount;
 	uint32 mAcceptedConnections;
+	uint32 SocketSendBufSize;
+	uint32 SocketRecvBufSize;
 
 	inline void AddExtendedSession(WorldSession * session) { mExtendedSessions.insert(session); }
 	inline void RemoveExtendedSession(WorldSession * session) { mExtendedSessions.erase(session); }
@@ -465,6 +481,15 @@ public:
 	uint32 flood_seconds;
 	bool flood_message;
 	bool gm_skip_attunement;
+	float m_UpdateDistance;
+	bool show_gm_in_who_list;
+	uint32 map_unload_time;
+
+	bool antihack_teleport;
+	bool antihack_speed;
+	bool antihack_falldmg;
+	bool antihack_flight;
+	bool no_antihack_on_gm;
 
 protected:
 	// update Stuff, FIXME: use diff
@@ -515,7 +540,6 @@ protected:
 	time_t m_lastTick;
 	uint32 TimeOut;
 
-	float m_UpdateDistance;
 	uint32 m_StartTime;
 	uint32 m_queueUpdateTimer;
 
@@ -523,6 +547,8 @@ protected:
 	SessionSet mExtendedSessions;
 
 	uint32	m_KickAFKPlayers;//don't lag the server if you are useless anyway :P
+public:
+	list<SpellEntry*> dummyspells;
 };
 
 #define sWorld World::getSingleton()

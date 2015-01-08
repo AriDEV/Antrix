@@ -1,23 +1,24 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * 2.1.0 updatefields extracted on 2007/05/23
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * USE OF THIS FILE IS NOT AUTHORIZED IN ANY PROJECTS WITHOUT
- * EXPLICIT PERMISSION FROM THE AUTHORS OF THIS FILE (Antrix Team)
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * Copyright (c) 2007 Antrix Team
- *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
- *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef __ANTRIX_UPDATEFIELDS_H
-#define __ANTRIX_UPDATEFIELDS_H
+#ifndef __ASCENT_UPDATEFIELDS_H
+#define __ASCENT_UPDATEFIELDS_H
 
 // Object Fields
 #define OBJECT_FIELD_GUID										  0x000
@@ -1669,5 +1670,5 @@
 #define CORPSE_FIELD_PAD										   OBJECT_END + 0x01F
 #define CORPSE_END												OBJECT_END + 0x020
 
-#endif // __ANTRIX_UPDATEFIELDS_H
+#endif // __ASCENT_UPDATEFIELDS_H
 

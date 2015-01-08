@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Honor System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -29,7 +34,9 @@ void HonorHandler::AddHonorPointsToPlayer(Player *pPlayer, uint32 uAmount)
 {
 	pPlayer->m_honorPoints += uAmount;
 	pPlayer->m_honorToday += uAmount;
+	
 	pPlayer->HandleProc(PROC_ON_GAIN_EXPIERIENCE, pPlayer, NULL);
+	pPlayer->m_procCounter = 0;
 
 	RecalculateHonorFields(pPlayer);
 }
@@ -46,45 +53,12 @@ time_t HonorHandler::GetNextUpdateTime()
 
 void HonorHandler::PerformStartupTasks()
 {
-	sLog.outString("Initializing Honor System...");
-	sLog.outString("  - Checking for out of date players and moving their kill values...");
+	Log.Notice("HonorHandler", "Starting Honor System...");
+	Log.Notice("HonorHandler", "Checking for out of date players and moving their kill values...");
 	uint32 next_update = GetNextUpdateTime();
 	uint32 now_update = time(NULL);
-	QueryResult * result = CharacterDatabase.Query("SELECT guid, killsToday, killsYesterday, killsLifeTime, honorToday, honorYesterday, honorPoints FROM characters WHERE lastDailyReset < %u", next_update);
-	if(!result)
-	{
-		sLog.outString("  - No players need to be updated.");
-	}
-	else
-	{
-		Field * fields = result->Fetch();
-		do 
-		{
-			uint32 guid = fields[0].GetUInt32();
-			uint32 killsToday = fields[1].GetUInt32();
-			uint32 killsYesterday = fields[2].GetUInt32();
-			uint32 killsLifeTime = fields[3].GetUInt32();
-			uint32 honorToday = fields[4].GetUInt32();
-			uint32 honorYesterday = fields[5].GetUInt32();
-			uint32 honorPoints = fields[6].GetUInt32();
 
-			killsYesterday = killsToday;
-			honorYesterday = honorToday;
-			killsToday = honorToday = 0;
-
-			CharacterDatabase.WaitExecute("UPDATE characters SET lastDailyReset = %u WHERE guid = %u", now_update, guid);
-			CharacterDatabase.WaitExecute("UPDATE characters SET killsToday = %u WHERE guid = %u", killsToday, guid);
-			CharacterDatabase.WaitExecute("UPDATE characters SET killsYesterday = %u WHERE guid = %u", killsYesterday, guid);
-			CharacterDatabase.WaitExecute("UPDATE characters SET killsLifeTime = %u WHERE guid = %u", killsLifeTime, guid);
-			CharacterDatabase.WaitExecute("UPDATE characters SET honorToday = %u WHERE guid = %u", honorToday, guid);
-			CharacterDatabase.WaitExecute("UPDATE characters SET honorYesterday = %u WHERE guid = %u", honorYesterday, guid);
-			CharacterDatabase.WaitExecute("UPDATE characters SET honorPoints = %u WHERE guid = %u", honorPoints, guid);
-
-		} while(result->NextRow());
-		sLog.outString("  - Honor re-calculated for %u players.", result->GetRowCount());
-		delete result;
-	}
-	sLog.outString("Honor System Ready.");
+	CharacterDatabase.WaitExecute("UPDATE characters SET lastDailyReset = %u, killsYesterday = killsToday, honorYesterday = honorToday, killsToday = 0, honorToday = 0 WHERE lastDailyReset < %u", now_update, next_update);
 }
 
 int32 HonorHandler::CalculateHonorPointsForKill(Player *pPlayer, Unit* pVictim)
@@ -95,6 +69,9 @@ int32 HonorHandler::CalculateHonorPointsForKill(Player *pPlayer, Unit* pVictim)
 		int pts = rand() % 100 + 100;
 		return pts;
 	}
+
+	if(pVictim->HasActiveAura(2479)) // How dishonorable, you fiend!
+		return 0;
 
 	if(pVictim != pPlayer && pVictim->GetTypeId() == TYPEID_PLAYER)
 	{
@@ -138,6 +115,8 @@ void HonorHandler::OnPlayerKilledUnit(Player *pPlayer, Unit* pVictim)
 {
 	if(pVictim && (!pVictim->IsPlayer() || static_cast<Player*>(pVictim)->m_honorless))
 		return;
+    if(pVictim && pVictim->IsPlayer() && static_cast<Player*>(pVictim)->GetTeam() == pPlayer->GetTeam())
+        return;
 
 	// Calculate points
 	int32 Points = CalculateHonorPointsForKill(pPlayer, pVictim);
@@ -149,18 +128,22 @@ void HonorHandler::OnPlayerKilledUnit(Player *pPlayer, Unit* pVictim)
             Group *pGroup = pPlayer->GetGroup();
             Player *gPlayer = NULL;
             int32 GroupPoints;
+			pGroup->Lock();
             GroupPoints = (Points / (pGroup->MemberCount() ? pGroup->MemberCount() : 1));
             GroupMembersSet::iterator gitr;
 			for(uint32 k = 0; k < pGroup->GetSubGroupCount(); k++)
 			{
 				for(gitr = pGroup->GetSubGroup(k)->GetGroupMembersBegin(); gitr != pGroup->GetSubGroup(k)->GetGroupMembersEnd(); ++gitr)
 				{
-					gPlayer = (*gitr);
+					gPlayer = gitr->player;
                     
-                    if(gPlayer->isInRange(pPlayer,100.0f)) // visible range
+                    if(gPlayer && (gPlayer == pPlayer || gPlayer->isInRange(pPlayer,100.0f))) // visible range
                     {
                         gPlayer->m_killsToday++;
                         gPlayer->m_killsLifetime++;
+						if(gPlayer->m_bg)
+							gPlayer->m_bg->HookOnHK(gPlayer);
+
 		                AddHonorPointsToPlayer(gPlayer, GroupPoints);
                         if(pVictim)
 		                {
@@ -174,6 +157,7 @@ void HonorHandler::OnPlayerKilledUnit(Player *pPlayer, Unit* pVictim)
 
                 }
             }
+			pGroup->Unlock();
         
         }
         else
@@ -182,6 +166,9 @@ void HonorHandler::OnPlayerKilledUnit(Player *pPlayer, Unit* pVictim)
 		    pPlayer->m_killsLifetime++;
 		    AddHonorPointsToPlayer(pPlayer, Points);
     		
+			if(pPlayer->m_bg)
+				pPlayer->m_bg->HookOnHK(pPlayer);
+
 		    if(pVictim)
 		    {
 			    // Send PVP credit

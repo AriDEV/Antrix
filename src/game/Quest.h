@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Quest System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -57,7 +62,7 @@ enum FAILED_REASON
 {
 	FAILED_REASON_FAILED			= 0,
 	FAILED_REASON_INV_FULL			= 4,
-	FAILED_REASON_DUPE_ITEM_FOUND   = 0x10,
+    FAILED_REASON_DUPE_ITEM_FOUND   = 17,
 };
 
 enum INVALID_REASON
@@ -93,8 +98,8 @@ enum QUEST_SHARE
 struct Quest
 {
 	uint32 id;
-	uint32 quest_sort;
 	uint32 zone_id;
+	uint32 quest_sort;
 	uint32 quest_flags;
 	uint32 min_level;
 	uint32 max_level;

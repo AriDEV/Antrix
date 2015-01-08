@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Loot System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -73,6 +78,9 @@ typedef struct
 {
 	_LootItem item;
 	float chance;
+	float chance2;
+	uint32 mincount;
+	uint32 maxcount;
 	LootPropTable *prop;
 }StoreLootItem;
 
@@ -91,6 +99,15 @@ typedef struct
 	uint32 gold;
 	LooterSet looters;
 }Loot;
+
+struct tempy
+{
+	uint32 itemid;
+	float chance;
+	float chance_2;
+	uint32 mincount;
+	uint32 maxcount;
+};
 
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -117,11 +134,13 @@ public:
 	typedef HM_NAMESPACE::hash_map<uint32,  LootPropTable*> PropStore; 
 	
 	void FillProfessionLoot(LootStore * store,Loot * loot,uint32 loot_id);
-	void FillCreatureLoot(Loot * loot,uint32 loot_id);
-	void FillGOLoot(Loot * loot,uint32 loot_id);
+	void FillCreatureLoot(Loot * loot,uint32 loot_id, bool heroic);
+	void FillGOLoot(Loot * loot,uint32 loot_id, bool heroic);
 	void FillItemLoot(Loot *loot, uint32 loot_id);
+	void FillPickpocketingLoot(Loot *loot, uint32 loot_id);
 
 	bool CanGODrop(uint32 LootId,uint32 itemid);
+	bool IsPickpocketable(uint32 creatureId);
 	bool IsSkinnable(uint32 creatureId);
 	bool IsFishable(uint32 zoneid);
 
@@ -134,11 +153,13 @@ public:
 	LootStore	SkinningLoot;
 	LootStore	GOLoot;
 	LootStore	ItemLoot;
+	LootStore	ProspectingLoot;
+	LootStore PickpocketingLoot;
 	std::map<uint32, std::set<uint32> > quest_loot_go;
  
 private:
 	void LoadLootTables(const char * szTableName,LootStore * LootTable);
-	void PushLoot(StoreLootList *list,Loot * loot);
+	void PushLoot(StoreLootList *list,Loot * loot, bool heroic);
 	PropStore	LootProperties;
    // uint32 _propCount;
 };

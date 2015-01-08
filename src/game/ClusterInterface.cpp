@@ -1,4 +1,24 @@
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
 #include "StdAfx.h"
+#include "svn_revision.h"
 
 #ifdef CLUSTERING
 
@@ -19,17 +39,19 @@ void ClusterInterface::InitHandlers()
 ClusterInterface::ClusterInterface()
 {
 	ClusterInterface::InitHandlers();
-
-	/* Load + Process Config Files */
-	/*if(!Config.ClusterConfig.SetSource("antrix-cluster.conf", true))
-	{
-		printf("Could not load antrix-cluster.conf");
-	}*/
+	m_connected = false;
 }
 
 ClusterInterface::~ClusterInterface()
 {
 
+}
+
+string ClusterInterface::GenerateVersionString()
+{
+	char str[200];
+	snprintf(str, 200, "Ascent r%u/%s-%s-%s", g_getRevision(), CONFIG, PLATFORM_TEXT, ARCH);
+	return string(str);
 }
 
 void ClusterInterface::ForwardWoWPacket(uint16 opcode, uint32 size, const void * data, uint32 sessionid)
@@ -56,29 +78,51 @@ void ClusterInterface::ForwardWoWPacket(uint16 opcode, uint32 size, const void *
 
 void ClusterInterface::ConnectToRealmServer()
 {
-	// todo: replace with config
-	const char * hostname = "localhost";
-	uint16 port = 10010;
-
-    WSClient * s = ConnectTCPSocket<WSClient>(hostname, port);
-	if(!s)
+	_lastConnectTime = UNIXTIME;
+	string hostname;
+	int port;
+	string strkey;
+	if(!Config.MainConfig.GetString("Cluster", "RSHostName", &hostname) || !Config.MainConfig.GetInt("Cluster", "RSPort", &port) || !Config.MainConfig.GetString("Cluster", "Key", &strkey))
 	{
-		Log.Error("ClusterInterface", "Could not connect to %s:%u", hostname, port);
+		Log.Error("ClusterInterface", "Could not get necessary fields from config file. Please fix and rehash.");
 		return;
 	}
 
+	/* hash the key */
+	Sha1Hash k;
+	k.UpdateData(strkey);
+	k.Finalize();
+	memcpy(key, k.GetDigest(), 20);
+
+	Log.Notice("ClusterInterface", "Connecting to %s port %u", hostname.c_str(), port);
+    WSClient * s = ConnectTCPSocket<WSClient>(hostname.c_str(), port);
+	if(!s)
+	{
+		Log.Error("ClusterInterface", "Could not connect to %s:%u", hostname.c_str(), port);
+		return;
+	}
+
+	Log.Success("ClusterInterface", "Connected to %s:%u", hostname.c_str(), port);
+
 	_clientSocket = s;
+	m_latency = getMSTime();
+	m_connected = true;
 }
 
 void ClusterInterface::HandleAuthRequest(WorldPacket & pck)
 {
 	uint32 x;
 	pck >> x;
-	Log.Debug("ClusterInterface", "Auth Request: %u", x);
+	Log.Debug("ClusterInterface", "Incoming auth request from %s (RS build %u)", _clientSocket->GetRemoteIP().c_str(), x);
 
-	WorldPacket data(ICMSG_AUTH_REPLY, 4);
-	data << uint32(1);
+	WorldPacket data(ICMSG_AUTH_REPLY, 50);
+	data.append(key, 20);
+	data << uint32(g_getRevision());
+	data << GenerateVersionString();
 	SendPacket(&data);
+
+	m_latency = getMSTime() - m_latency;
+	Log.Notice("ClusterInterface", "Latency between realm server is %u ms", m_latency);
 }
 
 void ClusterInterface::HandleAuthResult(WorldPacket & pck)
@@ -189,6 +233,9 @@ void ClusterInterface::HandlePackedPlayerInfo(WorldPacket & pck)
 
 void ClusterInterface::Update()
 {
+	if(!m_connected && UNIXTIME >= (_lastConnectTime + 3))
+		ConnectToRealmServer();
+
 	WorldPacket * pck;
 	uint16 opcode;
 	while((pck = _pckQueue.Pop()))
@@ -237,7 +284,32 @@ void ClusterInterface::HandleWoWPacket(WorldPacket & pck)
 	_sessions[sid]->QueuePacket(npck);
 }
 
+void ClusterInterface::HandlePlayerChangedServers(WorldPacket & pck)
+{
+	uint32 sessionid, dsid;
+	pck >> sessionid >> dsid;
+	if(!_sessions[dsid])
+	{
+		Log.Error("HandlePlayerChangedServers", "Invalid session: %u", sessionid);
+		return;
+	}
 
+	WorldSession * s = _sessions[sessionid];
+	Player * plr = s->GetPlayer();
+
+
+
+	/* build the packet with the players information */
+	WorldPacket data(ICMSG_PLAYER_CHANGE_SERVER_INFO, 1000);
+	data << sessionid << plr->GetGUIDLow();
+
+	/* pack */
+	//data << plr->
+	/* remove the player from our world. */
+	sEventMgr.AddEvent(plr, &Player::EventRemoveAndDelete, EVENT_GAMEOBJECT_EXPIRE	/* meh :P */, 1000, 1);
+
+	/* dereference the session */
+}
 
 
 #endif

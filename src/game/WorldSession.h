@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,6 +33,61 @@ class MapMgr;
 class Creature;
 class MovementInfo;
 struct TrainerSpell;
+
+// MovementFlags Contribution by Tenshi
+enum MovementFlags
+{
+	// Byte 1 (Resets on Movement Key Press)
+    MOVEFLAG_MOVE_STOP                  = 0x00, //verified
+	MOVEFLAG_MOVE_FORWARD				= 0x01, //verified
+	MOVEFLAG_MOVE_BACKWARD				= 0x02, //verified
+	MOVEFLAG_STRAFE_LEFT				= 0x04, //verified
+	MOVEFLAG_STRAFE_RIGHT				= 0x08, //verified
+	MOVEFLAG_TURN_LEFT					= 0x10, //verified
+	MOVEFLAG_TURN_RIGHT					= 0x20, //verified
+	MOVEFLAG_PITCH_DOWN					= 0x40,			// Unconfirmed
+	MOVEFLAG_PITCH_UP					= 0x80,			// Unconfirmed
+
+	// Byte 2 (Resets on Situation Change)
+	MOVEFLAG_WALK						= 0x100, //verified
+	MOVEFLAG_TAXI						= 0x200,		
+	MOVEFLAG_NO_COLLISION				= 0x400,
+	MOVEFLAG_FLYING	    				= 0x800, //verified
+	MOVEFLAG_REDIRECTED					= 0x1000,		// Unconfirmed
+	MOVEFLAG_FALLING					= 0x2000,       //verified
+	MOVEFLAG_FALLING_FAR				= 0x4000,		// verified Going to take damage(might not take damage).
+	MOVEFLAG_FREE_FALLING				= 0x8000,		// half verified ;P
+
+	// Byte 3 (Set by server. TB = Third Byte. Completely unconfirmed.)
+	MOVEFLAG_TB_PENDING_STOP			= 0x10000,		// (MOVEFLAG_PENDING_STOP)
+	MOVEFLAG_TB_PENDING_UNSTRAFE		= 0x20000,		// (MOVEFLAG_PENDING_UNSTRAFE)
+	MOVEFLAG_TB_PENDING_FALL			= 0x40000,		// (MOVEFLAG_PENDING_FALL)
+	MOVEFLAG_TB_PENDING_FORWARD			= 0x80000,		// (MOVEFLAG_PENDING_FORWARD)
+	MOVEFLAG_TB_PENDING_BACKWARD		= 0x100000,		// (MOVEFLAG_PENDING_BACKWARD)
+	MOVEFLAG_SWIMMING          		    = 0x200000,		//  verified
+	MOVEFLAG_FLYING_PITCH_UP	        = 0x400000,		// (half confirmed)(MOVEFLAG_PENDING_STR_RGHT)
+	MOVEFLAG_TB_MOVED					= 0x800000,		// (half confirmed) gets called when landing (MOVEFLAG_MOVED)
+
+	// Byte 4 (Script Based Flags. Never reset, only turned on or off.)
+	MOVEFLAG_AIR_SUSPENSION	   	 		= 0x1000000,	// confirmed allow body air suspension(good name? lol).
+	MOVEFLAG_AIR_SWIMMING				= 0x2000000,	// confirmed while flying.
+	MOVEFLAG_SPLINE_MOVER				= 0x4000000,	// Unconfirmed
+	MOVEFLAG_IMMOBILIZED				= 0x8000000,
+	MOVEFLAG_WATER_WALK					= 0x10000000,
+	MOVEFLAG_FEATHER_FALL				= 0x20000000,	// Does not negate fall damage.
+	MOVEFLAG_LEVITATE					= 0x40000000,
+	MOVEFLAG_LOCAL						= 0x80000000,	// This flag defaults to on. (Assumption)
+
+	// Masks
+	MOVEFLAG_MOVING_MASK				= 0x03,
+	MOVEFLAG_STRAFING_MASK				= 0x0C,
+	MOVEFLAG_TURNING_MASK				= 0x30,
+	MOVEFLAG_FALLING_MASK				= 0x6000,
+	MOVEFLAG_MOTION_MASK				= 0xE00F,		// Forwards, Backwards, Strafing, Falling
+	MOVEFLAG_PENDING_MASK				= 0x7F0000,
+	MOVEFLAG_PENDING_STRAFE_MASK		= 0x600000,
+	MOVEFLAG_PENDING_MOVE_MASK			= 0x180000,
+};
 
 struct OpcodeHandler
 {
@@ -76,19 +136,19 @@ public:
 		data >> flags >> time;
 		data >> x >> y >> z >> orientation;
 
-		if (flags & 0x200) // Transport
+		if (flags & MOVEFLAG_TAXI)
 		{
 			data >> transGuid >> transX >> transY >> transZ >> transO >> transUnk;
 		}
-		if (flags & 0x200000) // Swimming
+		if (flags & MOVEFLAG_SWIMMING)
 		{
 			data >> unk6;
 		}
-		if (flags & 0x2000) // Falling
+		if (flags & MOVEFLAG_FALLING)
 		{
 			data >> FallTime >> unk8 >> unk9 >> unk10;
 		}
-		if (flags & 0x4000000)
+		if (flags & MOVEFLAG_SPLINE_MOVER)
 		{
 			data >> unk12;
 		}
@@ -109,19 +169,19 @@ public:
 
 		data << x << y << z << orientation;
 
-		if (flags & 0x200) // Transport
+		if (flags & MOVEFLAG_TAXI)
 		{
 			data << transGuid << transX << transY << transZ << transO << transUnk;
 		}
-		if (flags & 0x200000) // Swimming
+		if (flags & MOVEFLAG_SWIMMING)
 		{
 			data << unk6;
 		}
-		if (flags & 0x2000) // Falling
+		if (flags & MOVEFLAG_FALLING)
 		{
 			data << FallTime << unk8 << unk9 << unk10;
 		}
-		if (flags & 0x4000000)
+		if (flags & MOVEFLAG_SPLINE_MOVER)
 		{
 			data << unk12;
 		}
@@ -164,9 +224,6 @@ public:
 		if(_socket && _socket->IsConnected())
 			_socket->OutPacket(opcode, 0, NULL);
 	}
-
-	bool SendThrottledPacket(WorldPacket * packet, bool allocated);
-	void UpdateThrottledPackets();
 
 	uint32 m_currMsTime;
 	uint32 m_lastPing;
@@ -266,6 +323,7 @@ public:
 	inline uint32 GetInstance() { return instanceId; }
 	Mutex deleteMutex;
 	void _HandleAreaTriggerOpcode(uint32 id);//real handle
+	uint32 m_moveDelayTime;
 
 
 protected:
@@ -471,6 +529,7 @@ protected:
 	/// Chat opcodes (Chat.cpp)
 	void HandleMessagechatOpcode(WorldPacket& recvPacket);
 	void HandleTextEmoteOpcode(WorldPacket& recvPacket);
+	void HandleReportSpamOpcode(WorldPacket& recvPacket);
 
 	/// Corpse opcodes (Corpse.cpp)
 	void HandleCorpseReclaimOpcode( WorldPacket& recvPacket );
@@ -599,7 +658,7 @@ protected:
 	void HandleResetInstanceOpcode(WorldPacket& recv_data);
     void HandleDungeonDifficultyOpcode(WorldPacket& recv_data);
 
-	uint8 TrainerGetSpellStatus(TrainerSpell* pSpell);
+	uint8 TrainerGetSpellStatus(TrainerSpell* pSpell,bool oldtrainer=true);
 	void __fastcall CHECK_PACKET_SIZE(WorldPacket& data, uint32 size);
 	void SendMailError(uint32 error);
 
@@ -645,7 +704,6 @@ private:
 	AccountDataEntry sAccountData[8];
 
 	FastQueue<WorldPacket*, Mutex> _recvQueue;
-	FastQueue<WorldPacket*, Mutex> _throttledQueue;
 	char *permissions;
 	int permissioncount;
 
@@ -653,11 +711,9 @@ private:
 	uint32 _latency;
 	uint32 client_build;
 	uint32 instanceId;
+	uint8 _updatecount;
 public:
 	static void InitPacketHandlerTable();
-
-	time_t packetThrottleTimeout;
-	uint32 packetThrottleCount;
 	uint32 floodLines;
 	uint32 floodTime;
 };

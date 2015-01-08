@@ -1,26 +1,31 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "StdAfx.h"
 #ifndef WIN32
-#include <dlfcn.h>
-#include <unistd.h>
-#include <dirent.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <cstdlib>
-#include <cstring>
+    #include <dlfcn.h>
+    #include <unistd.h>
+    #include <dirent.h>
+    #include <sys/types.h>
+    #include <sys/stat.h>
+    #include <cstdlib>
+    #include <cstring>
 #endif
 
 initialiseSingleton(ScriptMgr);
@@ -153,6 +158,9 @@ char *ext;
 
 void ScriptMgr::UnloadScripts()
 {
+	if(HookInterface::getSingletonPtr())
+		delete HookInterface::getSingletonPtr();
+
 	LibraryHandleMap::iterator itr = _handles.begin();
 	for(; itr != _handles.end(); ++itr)
 	{
@@ -250,7 +258,7 @@ CreatureAIScript::CreatureAIScript(Creature* creature) : _unit(creature)
 
 void CreatureAIScript::RegisterAIUpdateEvent(uint32 frequency)
 {
-	sEventMgr.AddEvent(_unit, &Creature::CallScriptUpdate, EVENT_SCRIPT_UPDATE_EVENT, frequency, 0);
+	sEventMgr.AddEvent(_unit, &Creature::CallScriptUpdate, EVENT_SCRIPT_UPDATE_EVENT, frequency, 0,0);
 }
 
 void CreatureAIScript::RemoveAIUpdateEvent()
@@ -267,7 +275,7 @@ GameObjectAIScript::GameObjectAIScript(GameObject* goinstance) : _gameobject(goi
 
 void GameObjectAIScript::RegisterAIUpdateEvent(uint32 frequency)
 {
-	sEventMgr.AddEvent(_gameobject, &GameObject::CallScriptUpdate, EVENT_SCRIPT_UPDATE_EVENT, frequency, 0);
+	sEventMgr.AddEvent(_gameobject, &GameObject::CallScriptUpdate, EVENT_SCRIPT_UPDATE_EVENT, frequency, 0,0);
 }
 
 
@@ -285,7 +293,7 @@ QuestScript::QuestScript(QuestLogEntry *qle) : _qLogEntry(qle)
 
 void QuestScript::RegisterQuestEvent(uint32 frequency)
 {
-	sEventMgr.AddEvent(_qLogEntry, &QuestLogEntry::CallScriptUpdate, EVENT_SCRIPT_UPDATE_EVENT, frequency, 0);
+	sEventMgr.AddEvent(_qLogEntry, &QuestLogEntry::CallScriptUpdate, EVENT_SCRIPT_UPDATE_EVENT, frequency, 0,0);
 }
 
 void QuestScript::RemoveQuestEvent()
@@ -412,8 +420,8 @@ void GossipScript::GossipHello(Creature* pCreature, Player* Plr, bool AutoSend)
 	if(flags & UNIT_NPC_FLAG_TABARDCHANGER)
 		Menu->AddItem(0, "I want to create a guild crest.", 9);
 
-	/*if(flags & UNIT_NPC_FLAG_BATTLEFIELDPERSON)
-		Menu->AddItem(0, "I would like to go to the battleground.", 10);*/
+	if(flags & UNIT_NPC_FLAG_BATTLEFIELDPERSON)
+		Menu->AddItem(0, "I would like to go to the battleground.", 10);
 
 	if( pTrainer &&
 		pTrainer->RequiredClass &&					  // class trainer

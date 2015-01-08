@@ -1,18 +1,24 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "DBC.h"
+#include "../NGLog.h"
 #include <math.h>
 
 class DBC;
@@ -28,12 +34,12 @@ void DBC::Load(const char *filename) {
 	FILE *f = fopen(filename, "rb");
 	if(!f)
 	{
-		printf("DBC %s Doesnt exist!\n",filename);
+		//printf("DBC %s Doesnt exist!\n",filename);
+		Log.Error("DBC", "DBC %s doesn't exist!\n", filename);
 		return;
 	}
 
-	char buffer[256] = {(char)NULL};
-	fread(buffer, 4, 1, f);
+	fseek(f, 4, SEEK_SET);
 	fread(&rows,4, 1, f);
 	fread(&cols, 4, 1, f);
 	fread(&weird2, 4, 1, f);
@@ -45,12 +51,11 @@ void DBC::Load(const char *filename) {
 	swap32(&weird2);
 	swap32(&dblength);
 #endif
-	
+
 	tbl = new unsigned int[rows * cols];
 	db = new char[dblength];
 	format = new DBCFmat[cols];
 	strcpy(name,filename);
-
 	fread(tbl,rows*cols*4,1,f);
 	fread(db,dblength,1,f);
 
@@ -63,9 +68,7 @@ void DBC::Load(const char *filename) {
 	fclose(f);
 	loaded = true;
 
-#ifdef DBC_PRINT
-		printf("DBC %s loaded.\n",filename);
-#endif
+	Log.Notice("DBC", "Loaded %s (%u rows)", name, rows);
 }
 
 

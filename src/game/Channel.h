@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Channel System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -26,13 +31,13 @@ class Channel
 		bool owner, moderator, muted;
 	};
 	typedef map<Player*,PlayerInfo> PlayerList;
-	PlayerList players;
-	list<uint64> banned;
-	string name;
-	bool announce, constant, moderate;
-	Player *owner;
-	string password;
-	uint32 team;
+	PlayerList      players;
+	list<uint64>    banned;
+	string          name;
+	bool            announce, constant, moderate;
+	Player *        owner;
+	string          password;
+	uint32          team;
 
 private:
 	/*Packets! Woohoo!*/
@@ -59,11 +64,12 @@ private:
 		MakeNotifyPacket(data,0x0C);
 		*data << who->GetGUID();
 		uint8 byte1 = 0x00, byte2 = 0x00;
-		if(moderator == 1) byte1 |= 0x02;
-		if(voice == 1) byte1 |= 0x04;
 
-		if(moderator == 2) byte2 |= 0x02;
-		if(voice == 2) byte2 |= 0x04;
+		if(moderator == 1)  byte1 |= 0x02;
+		if(voice == 1)      byte1 |= 0x04;
+
+		if(moderator == 2)  byte2 |= 0x02;
+		if(voice == 2)      byte2 |= 0x04;
 		*data << byte1 << byte2;
 	}
 	inline void MakeEnabledAnnounce(WorldPacket *data, Player *who) { *MakeNotifyPacket(data,0x0D) << who->GetGUID(); }
@@ -146,7 +152,7 @@ private:
 		owner = p;
 		if(owner != NULL)
 		{
-		   WorldPacket data(100);
+		   WorldPacket data(10);
 		   MakeChangeOwner(&data,p);
 		   SendToAll(&data);
 		}
@@ -157,7 +163,7 @@ private:
 		if(players[p].moderator != set)
 		{
 			players[p].moderator = set;
-			WorldPacket data(100);
+			WorldPacket data(10);
 			MakeModeChange(&data,p,set ? 2 : 1,0);
 			SendToAll(&data);
 		}
@@ -169,7 +175,7 @@ private:
 		{
 			players[p].muted = set;
 			set = !set;
-			WorldPacket data(100);
+			WorldPacket data(10);
 			MakeModeChange(&data,p,0,set ? 2 : 1);
 			SendToAll(&data);
 		}

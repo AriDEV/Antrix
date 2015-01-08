@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -63,7 +68,7 @@ Creature::Creature(uint32 high, uint32 low)
 		StatModPct[x]=0;
 		FlatStatMod[x]=0;
 	}
-	m_runSpeed=PLAYER_NORMAL_RUN_SPEED;
+	m_runSpeed=MONSTER_NORMAL_RUN_SPEED;
 
 	totemOwner = NULL;
 	totemSlot = -1;
@@ -87,6 +92,10 @@ Creature::Creature(uint32 high, uint32 low)
 	SetFloatValue(UNIT_FIELD_RANGED_ATTACK_POWER_MULTIPLIER,1);
 	m_custom_waypoint_map = 0;
 	m_escorter = 0;
+	m_limbostate = false;
+	m_corpseEvent=false;
+	m_runSpeed=8.0f;
+	m_respawnCell=NULL;
 }
 
 
@@ -106,9 +115,11 @@ Creature::~Creature()
 	if(m_custom_waypoint_map != 0)
 	{
 		for(WayPointMap::iterator itr = m_custom_waypoint_map->begin(); itr != m_custom_waypoint_map->end(); ++itr)
-			delete itr->second;
+			delete (*itr);
 		delete m_custom_waypoint_map;
 	}
+	if(m_respawnCell!=NULL)
+		m_respawnCell->_respawnObjects.erase(this);
 }
 
 void Creature::Update( uint32 p_time )
@@ -118,6 +129,14 @@ void Creature::Update( uint32 p_time )
 	{
 		RemoveFromWorld(false);
 		delete this;
+		return;
+	}
+
+	if(m_corpseEvent)
+	{
+		sEventMgr.RemoveEvents(this);
+		sEventMgr.AddEvent(this, &Creature::OnRemoveCorpse, EVENT_CREATURE_REMOVE_CORPSE, 180000, 1,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
+		m_corpseEvent=false;
 	}
 }
 
@@ -125,7 +144,7 @@ void Creature::SafeDelete()
 {
 	sEventMgr.RemoveEvents(this);
 	//sEventMgr.AddEvent(World::getSingletonPtr(), &World::DeleteObject, ((Object*)this), EVENT_CREATURE_SAFE_DELETE, 1000, 1);
-	sEventMgr.AddEvent(this, &Creature::DeleteMe, EVENT_CREATURE_SAFE_DELETE, 1000, 1);
+	sEventMgr.AddEvent(this, &Creature::DeleteMe, EVENT_CREATURE_SAFE_DELETE, 1000, 1,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
 }
 
 void Creature::DeleteMe()
@@ -144,7 +163,7 @@ void Creature::OnRemoveCorpse()
 
 		sLog.outDetail("Removing corpse of "I64FMT"...", GetGUID());
 	   
-			if(GetMapMgr()->GetMapInfo() && GetMapMgr()->GetMapInfo()->type == INSTANCE_RAID && this->GetCreatureName() && this->GetCreatureName()->Rank == 3)
+			if(GetMapMgr()->GetMapInfo() && GetMapMgr()->GetMapInfo()->type == INSTANCE_RAID && this->proto && this->proto->boss)
 			{
 				RemoveFromWorld(false);
 			}
@@ -167,50 +186,42 @@ void Creature::OnRemoveCorpse()
 	}
 }
 
-void Creature::OnRespawn()
+void Creature::OnRespawn(MapMgr * m)
 {
-	if (!IsInWorld())
+	sLog.outDetail("Respawning "I64FMT"...", GetGUID());
+	SetUInt32Value(UNIT_FIELD_HEALTH, GetUInt32Value(UNIT_FIELD_MAXHEALTH));
+	SetUInt32Value(UNIT_DYNAMIC_FLAGS, 0); // not tagging shiat
+	if(proto && m_spawn)
 	{
-		sLog.outDetail("Respawning "I64FMT"...", GetGUID());
-		SetUInt32Value(UNIT_FIELD_HEALTH, GetUInt32Value(UNIT_FIELD_MAXHEALTH));
-		SetUInt32Value(UNIT_DYNAMIC_FLAGS, 0); // not tagging shiat
-		if(proto && m_spawn)
-		{
-			SetUInt32Value(UNIT_NPC_FLAGS, proto->NPCFLags);
-			SetUInt32Value(UNIT_NPC_EMOTESTATE, m_spawn->emote_state);
-		}
-
-		RemoveFlag(UNIT_FIELD_FLAGS,U_FIELD_FLAG_SKINNABLE);
-		Skinned = false;
-		Tagged = false;
-		TaggerGuid = 0;
-
-		//empty loot
-		loot.items.clear();
-
-		AddToWorld();
-		setDeathState(ALIVE);
-		GetAIInterface()->StopMovement(0); // after respawn monster can move
-		m_PickPocketed = false;
+		SetUInt32Value(UNIT_NPC_FLAGS, proto->NPCFLags);
+		SetUInt32Value(UNIT_NPC_EMOTESTATE, m_spawn->emote_state);
 	}
-	else
+
+	RemoveFlag(UNIT_FIELD_FLAGS,U_FIELD_FLAG_SKINNABLE);
+	Skinned = false;
+	Tagged = false;
+	TaggerGuid = 0;
+
+	/* creature death state */
+	if(proto && proto->death_state == 1)
 	{
-		// if we got here it's pretty bad
+		uint32 newhealth = m_uint32Values[UNIT_FIELD_HEALTH] / 100;
+		if(!newhealth)
+			newhealth = 1;
+		SetUInt32Value(UNIT_FIELD_HEALTH, 1);
+		m_limbostate = true;
+		bInvincible = true;
+		SetUInt32Value(UNIT_NPC_EMOTESTATE, EMOTE_STATE_DEAD);
 	}
+
+	//empty loot
+	loot.items.clear();
+
+	setDeathState(ALIVE);
+	GetAIInterface()->StopMovement(0); // after respawn monster can move
+	m_PickPocketed = false;
+	PushToWorld(m);
 }
-/*
-void Creature::Despawn()
-{
-	GetAIInterface()->SetUnitToFollow(NULL);
-	if(IsInWorld())
-	{
-		RemoveFromWorld(true);
-	}
-   
-	setDeathState(DEAD);
-
-	m_position = m_spawnLocation;
-}*/
 
 void Creature::Create (const char* name, uint32 mapid, float x, float y, float z, float ang)
 {
@@ -227,7 +238,7 @@ void Creature::CreateWayPoint (uint32 WayPointID, uint32 mapid, float x, float y
 
 void Creature::generateLoot()
 {
-	lootmgr.FillCreatureLoot(&loot,GetEntry());
+	lootmgr.FillCreatureLoot(&loot,GetEntry(), m_mapMgr ? (m_mapMgr->iInstanceMode > 0 ? true : false) : false);
 	
 	loot.gold = proto ? proto->money : 0;
 
@@ -392,8 +403,9 @@ void Creature::setDeathState(DeathState s)
 
 		GetAIInterface()->SetUnitToFollow(NULL);
 		m_deathState = CORPSE;
+		m_corpseEvent=true;
 		
-		sEventMgr.AddEvent(this, &Creature::OnRemoveCorpse, EVENT_CREATURE_REMOVE_CORPSE, 180000, 1);
+		/*sEventMgr.AddEvent(this, &Creature::OnRemoveCorpse, EVENT_CREATURE_REMOVE_CORPSE, 180000, 1,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);*/
 		if(m_enslaveSpell)
 			RemoveEnslave();
 
@@ -430,23 +442,33 @@ bool Creature::CanAddToWorld()
 
 void Creature::RemoveFromWorld(bool addev)
 {
+	if(GetGUIDHigh() != HIGHGUID_UNIT)		/* is a pet */
+	{
+		if(IsInWorld())
+			Unit::RemoveFromWorld();
+
+		SafeDelete();
+		return;
+	}
+
+	if(!IS_INSTANCE(m_mapId))
+		objmgr.SetCreatureBySqlId(GetSQL_id(), 0);
+
 	if(IsInWorld())
 	{
 		RemoveAllAuras();
-
 		sEventMgr.RemoveEvents(this);
+
 		if(addev)
 		{
-			//printf("DEBUG: removing creature respawnval: %d",proto->RespawnTime);
-			 // instanced creatures don't respawn
-			if(proto && proto->RespawnTime > 0 && (GetMapId() == 530 || GetMapId() == 0 || GetMapId() == 1 )) // temp fix for instances...
-				sEventMgr.AddEvent(this, &Creature::OnRespawn, EVENT_CREATURE_RESPAWN, proto->RespawnTime, 1);
+			if(proto && proto->RespawnTime > 0)
+				Despawn(0, proto->RespawnTime);
 			else
-				SafeDelete();
+				Despawn(0,0);
 		}
-		Unit::RemoveFromWorld();
+		else
+			Despawn(0,0);
 	}
-	objmgr.SetCreatureBySqlId(GetSQL_id(), 0);
 }
 
 void Creature::EnslaveExpire()
@@ -458,7 +480,7 @@ void Creature::EnslaveExpire()
 	{
 		caster->SetUInt64Value(UNIT_FIELD_CHARM, 0);
 		caster->SetUInt64Value(UNIT_FIELD_SUMMON, 0);
-		WorldPacket data;
+		WorldPacket data(8);
 		data.Initialize(SMSG_PET_SPELLS);
 		data << uint64(0);
 		caster->GetSession()->SendPacket(&data);
@@ -494,10 +516,12 @@ bool Creature::RemoveEnslave()
 
 void Creature::AddInRangeObject(Object* pObj)
 {
+	if(pObj->GetTypeId() == TYPEID_PLAYER && pObj->IsPlayer())
+		ScriptSystem->OnCreatureEvent(((Creature*)this), (Unit*)pObj, CREATURE_EVENT_PLAYER_ENTERS_RANGE);
 	Unit::AddInRangeObject(pObj);
 }
 
-void Creature::RemoveInRangeObject(Object* pObj)
+void Creature::OnRemoveInRangeObject(Object* pObj)
 {
 	if(totemOwner == pObj)		// player gone out of range of the totem
 	{
@@ -513,7 +537,7 @@ void Creature::RemoveInRangeObject(Object* pObj)
 		Despawn(1000, 1000);
 	}
 
-	Unit::RemoveInRangeObject(pObj);
+	Unit::OnRemoveInRangeObject(pObj);
 }
 
 void Creature::ClearInRangeSet()
@@ -546,6 +570,9 @@ void Creature::CalcStat(uint32 type)
 
 void Creature::RegenerateHealth()
 {
+	if(m_limbostate)
+		return;
+
 	uint32 cur=GetUInt32Value(UNIT_FIELD_HEALTH);
 	uint32 mh=GetUInt32Value(UNIT_FIELD_MAXHEALTH);
 	if(cur>=mh)return;
@@ -637,6 +664,9 @@ void Creature::TotemExpire()
 
 void Creature::FormationLinkUp(uint32 SqlId)
 {
+	if(IS_INSTANCE(m_mapId))
+		return;
+
 	Creature * creature = objmgr.GetCreatureBySqlId(SqlId);
 	if(creature != 0)
 	{
@@ -734,9 +764,15 @@ bool Creature::Load(CreatureSpawn *spawn, uint32 mode, MapInfo *info)
 	SetUInt32Value(OBJECT_FIELD_ENTRY,proto->Id);
 	SetFloatValue(OBJECT_FIELD_SCALE_X,proto->Scale);
 	
-	SetUInt32Value(UNIT_FIELD_HEALTH, (mode ? long2int32(proto->Health * 1.5)  : proto->Health));
-	SetUInt32Value(UNIT_FIELD_BASE_HEALTH, (mode ? long2int32(proto->Health * 1.5)  : proto->Health));
-	SetUInt32Value(UNIT_FIELD_MAXHEALTH, (mode ? long2int32(proto->Health * 1.5)  : proto->Health));
+	//SetUInt32Value(UNIT_FIELD_HEALTH, (mode ? long2int32(proto->Health * 1.5)  : proto->Health));
+	//SetUInt32Value(UNIT_FIELD_BASE_HEALTH, (mode ? long2int32(proto->Health * 1.5)  : proto->Health));
+	//SetUInt32Value(UNIT_FIELD_MAXHEALTH, (mode ? long2int32(proto->Health * 1.5)  : proto->Health));
+	uint32 health = proto->MinHealth + sRand.randInt(proto->MaxHealth - proto->MinHealth);
+	if(mode)
+		health = long2int32(double(health) * 1.5);
+	SetUInt32Value(UNIT_FIELD_HEALTH, health);
+	SetUInt32Value(UNIT_FIELD_MAXHEALTH, health);
+	SetUInt32Value(UNIT_FIELD_BASE_HEALTH, health);
 
 	SetUInt32Value(UNIT_FIELD_POWER1,proto->Mana);
 	SetUInt32Value(UNIT_FIELD_MAXPOWER1,proto->Mana);
@@ -750,7 +786,11 @@ bool Creature::Load(CreatureSpawn *spawn, uint32 mode, MapInfo *info)
 	if(spawn->displayid != creature_info->DisplayID)
 		setGender(1);   // Female
 	
-    SetUInt32Value(UNIT_FIELD_LEVEL, (mode ? proto->Level + (info ? info->lvl_mod_a : 0) : proto->Level));
+    //SetUInt32Value(UNIT_FIELD_LEVEL, (mode ? proto->Level + (info ? info->lvl_mod_a : 0) : proto->Level));
+	SetUInt32Value(UNIT_FIELD_LEVEL, proto->MinLevel + (sRand.randInt(proto->MaxLevel - proto->MinLevel)));
+	if(mode && info)
+		ModUInt32Value(UNIT_FIELD_LEVEL, info->lvl_mod_a);
+
 	for(uint32 i = 0; i < 7; ++i)
 		SetUInt32Value(UNIT_FIELD_RESISTANCES+i,proto->Resistances[i]);
 
@@ -856,7 +896,7 @@ bool Creature::Load(CreatureSpawn *spawn, uint32 mode, MapInfo *info)
 		m_aiInterface->m_formationFollowAngle = spawn->form->ang;
 		// add event
 		sEventMgr.AddEvent(this, &Creature::FormationLinkUp, m_aiInterface->m_formationLinkSqlId,
-			EVENT_CREATURE_FORMATION_LINKUP, 1000, 0);
+			EVENT_CREATURE_FORMATION_LINKUP, 1000, 0,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
 		haslinkupevent = true;
 	}
 	else
@@ -894,7 +934,20 @@ bool Creature::Load(CreatureSpawn *spawn, uint32 mode, MapInfo *info)
 	has_combat_text = objmgr.HasMonsterSay(GetEntry(), MONSTER_SAY_EVENT_ENTER_COMBAT);
 	has_waypoint_text = objmgr.HasMonsterSay(GetEntry(), MONSTER_SAY_EVENT_RANDOM_WAYPOINT);
 	m_aiInterface->m_hasWaypointEvents = ScriptSystem->HasEventType(GetEntry(), CREATURE_EVENT_ON_REACH_WP);
+	m_aiInterface->m_isGuard = isGuard(GetEntry());
 
+	/* creature death state */
+	if(proto->death_state == 1)
+	{
+		uint32 newhealth = m_uint32Values[UNIT_FIELD_HEALTH] / 100;
+		if(!newhealth)
+			newhealth = 1;
+		SetUInt32Value(UNIT_FIELD_HEALTH, 1);
+		m_limbostate = true;
+		bInvincible = true;
+		SetUInt32Value(UNIT_NPC_EMOTESTATE, EMOTE_STATE_DEAD);
+	}
+	m_invisibityFlag = proto->invisibility_type;
 	return true;
 }
 
@@ -911,9 +964,14 @@ void Creature::Load(CreatureProto * proto_, float x, float y, float z)
 	SetUInt32Value(OBJECT_FIELD_ENTRY,proto->Id);
 	SetFloatValue(OBJECT_FIELD_SCALE_X,proto->Scale);
 
-	SetUInt32Value(UNIT_FIELD_HEALTH, proto->Health);
-	SetUInt32Value(UNIT_FIELD_BASE_HEALTH, proto->Health);
-	SetUInt32Value(UNIT_FIELD_MAXHEALTH, proto->Health);
+	//SetUInt32Value(UNIT_FIELD_HEALTH, (mode ? long2int32(proto->Health * 1.5)  : proto->Health));
+	//SetUInt32Value(UNIT_FIELD_BASE_HEALTH, (mode ? long2int32(proto->Health * 1.5)  : proto->Health));
+	//SetUInt32Value(UNIT_FIELD_MAXHEALTH, (mode ? long2int32(proto->Health * 1.5)  : proto->Health));
+	uint32 health = proto->MinHealth + sRand.randInt(proto->MaxHealth - proto->MinHealth);
+
+	SetUInt32Value(UNIT_FIELD_HEALTH, health);
+	SetUInt32Value(UNIT_FIELD_MAXHEALTH, health);
+	SetUInt32Value(UNIT_FIELD_BASE_HEALTH, health);
 
 	SetUInt32Value(UNIT_FIELD_POWER1,proto->Mana);
 	SetUInt32Value(UNIT_FIELD_MAXPOWER1,proto->Mana);
@@ -921,8 +979,11 @@ void Creature::Load(CreatureProto * proto_, float x, float y, float z)
 
 	SetUInt32Value(UNIT_FIELD_DISPLAYID,creature_info->DisplayID);
 	SetUInt32Value(UNIT_FIELD_NATIVEDISPLAYID,creature_info->DisplayID);
+	SetUInt32Value(UNIT_FIELD_MOUNTDISPLAYID,proto->MountedDisplayID);
 
-	SetUInt32Value(UNIT_FIELD_LEVEL, proto->Level);
+	//SetUInt32Value(UNIT_FIELD_LEVEL, (mode ? proto->Level + (info ? info->lvl_mod_a : 0) : proto->Level));
+	SetUInt32Value(UNIT_FIELD_LEVEL, proto->MinLevel + (sRand.randInt(proto->MaxLevel - proto->MinLevel)));
+
 	for(uint32 i = 0; i < 7; ++i)
 		SetUInt32Value(UNIT_FIELD_RESISTANCES+i,proto->Resistances[i]);
 
@@ -1045,6 +1106,20 @@ void Creature::Load(CreatureProto * proto_, float x, float y, float z)
 	has_combat_text = objmgr.HasMonsterSay(GetEntry(), MONSTER_SAY_EVENT_ENTER_COMBAT);
 	has_waypoint_text = objmgr.HasMonsterSay(GetEntry(), MONSTER_SAY_EVENT_RANDOM_WAYPOINT);
 	m_aiInterface->m_hasWaypointEvents = ScriptSystem->HasEventType(GetEntry(), CREATURE_EVENT_ON_REACH_WP);
+	m_aiInterface->m_isGuard = isGuard(GetEntry());
+
+	/* creature death state */
+	if(proto->death_state == 1)
+	{
+		uint32 newhealth = m_uint32Values[UNIT_FIELD_HEALTH] / 100;
+		if(!newhealth)
+			newhealth = 1;
+		SetUInt32Value(UNIT_FIELD_HEALTH, 1);
+		m_limbostate = true;
+		bInvincible = true;
+		SetUInt32Value(UNIT_NPC_EMOTESTATE, EMOTE_STATE_DEAD);
+	}
+	m_invisibityFlag = proto->invisibility_type;
 }
 
 void Creature::OnPushToWorld()
@@ -1070,10 +1145,10 @@ void Creature::OnPushToWorld()
 	if(_myScriptClass)
 		_myScriptClass->OnLoad();
 
-	objmgr.SetCreatureBySqlId(GetSQL_id(), this);
-
 	if(IS_INSTANCE(m_mapMgr->GetMapId()))
 		m_aiInterface->setOutOfCombatRange(0);		
+	else
+		objmgr.SetCreatureBySqlId(GetSQL_id(), this);
 }
 
 // this is used for guardians. They are non respawnable creatures linked to a player
@@ -1087,14 +1162,33 @@ void Creature::Despawn(uint32 delay, uint32 respawntime)
 {
 	if(delay)
 	{
-		sEventMgr.AddEvent(this, &Creature::Despawn, (uint32)0, respawntime, EVENT_CREATURE_RESPAWN, delay, 1);
+		sEventMgr.AddEvent(this, &Creature::Despawn, (uint32)0, respawntime, EVENT_CREATURE_RESPAWN, delay, 1,0);
 		return;
 	}
 
-	RemoveFromWorld(false);
-	m_position = m_spawnLocation;
+	if(!IsInWorld())
+		return;
+
 	if(respawntime)
-		sEventMgr.AddEvent(this, &Creature::OnRespawn, EVENT_CREATURE_RESPAWN, respawntime, 1);
+	{
+		/* get the cell with our SPAWN location. if we've moved cell this might break :P */
+		MapCell * pCell = m_mapMgr->GetCellByCoords(m_spawnLocation.x, m_spawnLocation.y);
+		if(!pCell)
+			pCell = m_mapCell;
+	
+		ASSERT(pCell);
+		pCell->_respawnObjects.insert(((Object*)this));
+		sEventMgr.RemoveEvents(this);
+		sEventMgr.AddEvent(m_mapMgr, &MapMgr::EventRespawnCreature, this, pCell, EVENT_CREATURE_RESPAWN, respawntime, 1, 0);
+		Unit::RemoveFromWorld();
+		m_position = m_spawnLocation;
+		m_respawnCell=pCell;
+	}
+	else
+	{
+		Unit::RemoveFromWorld();
+		SafeDelete();
+	}
 }
 
 void Creature::TriggerScriptEvent(void * func)
@@ -1108,10 +1202,54 @@ void Creature::DestroyCustomWaypointMap()
 	{
 		for(WayPointMap::iterator itr = m_custom_waypoint_map->begin(); itr != m_custom_waypoint_map->end(); ++itr)
 		{
-			delete itr->second;
+			delete (*itr);
 		}
 		delete m_custom_waypoint_map;
 		m_custom_waypoint_map = 0;
 		m_aiInterface->SetWaypointMap(0);
+	}
+}
+
+void Creature::RemoveLimboState(Unit * healer)
+{
+	if(!m_limbostate != true)
+		return;
+
+	m_limbostate = false;
+	SetUInt32Value(UNIT_NPC_EMOTESTATE, m_spawn ? m_spawn->emote_state : 0);
+	SetUInt32Value(UNIT_FIELD_HEALTH, GetUInt32Value(UNIT_FIELD_MAXHEALTH));
+	ScriptSystem->OnCreatureEvent(this, healer ? healer : this, CREATURE_EVENT_ON_LEAVE_LIMBO);
+	bInvincible = false;
+}
+
+// Generates 3 random waypoints around the NPC
+void Creature::SetGuardWaypoints()
+{
+	if(!GetMapMgr()) return;
+	if(!GetCreatureName()) return;
+
+	GetAIInterface()->setMoveType(1);
+	for(int i = 1; i <= 4; i++)
+	{
+		float ang = rand()/100.0;
+		float ran = (rand()%(100))/10.0;
+		while(ran < 1)
+			ran = (rand()%(100))/10.0;
+
+		WayPoint * wp = new WayPoint;
+		wp->id = i;
+		wp->flags = 0;
+		wp->waittime = 800;  /* these guards are antsy :P */
+		wp->x = GetSpawnX()+ran*sin(ang);
+		wp->y = GetSpawnY()+ran*cos(ang);
+		wp->z = GetMapMgr()->GetLandHeight(wp->x, wp->y);
+		wp->o = 0;
+		wp->backwardemoteid = 0;
+		wp->backwardemoteoneshot = 0;
+		wp->forwardemoteid = 0;
+		wp->forwardemoteoneshot = 0;
+		wp->backwardskinid = GetCreatureName()->DisplayID;
+		wp->forwardskinid = GetCreatureName()->DisplayID;
+		GetAIInterface()->addWayPoint(wp);
 	}
 }

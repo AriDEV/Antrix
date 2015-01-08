@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -356,8 +361,8 @@ enum Opcodes {
 	SMSG_DAMAGE_TAKEN_OBSOLETE                   = 333,	//(0x014D)
 	SMSG_CANCEL_COMBAT                           = 334,	//(0x014E)
 	SMSG_PLAYER_COMBAT_XP_GAIN_OBSOLETE          = 335,	//(0x014F)
-	SMSG_HEALSPELL_ON_PLAYER_OBSOLETE            = 336,	//(0x0150)
-	SMSG_HEALSPELL_ON_PLAYERS_PET_OBSOLETE       = 337,	//(0x0151)
+	SMSG_HEALSPELL_ON_PLAYER			         = 336,	//(0x0150)
+	SMSG_HEALMANASPELL_ON_PLAYER			     = 337,	//(0x0151)
 	CMSG_SHEATHE_OBSOLETE                        = 338,	//(0x0152)
 	CMSG_SAVE_PLAYER                             = 339,	//(0x0153)
 	CMSG_SETDEATHBINDPOINT                       = 340,	//(0x0154)
@@ -862,6 +867,7 @@ enum Opcodes {
 	SMSG_FLIGHT_SPLINE_SYNC                      = 904,	//(0x0388)
 	SMSG_REALM_SPLIT_STATE_RESPONSE              = 907,	//(0x038B)
 	CMSG_REALM_SPLIT_STATE_REQUEST               = 908,	//(0x038C)
+    CMSG_TRANSPORT_STEP_IN_OUT                   = 909, //(0x038D)
 	CMSG_GROUP_PROMOTE                           = 910,	//(0x038E)
 	SMSG_TICKCOUNT_QUERY                         = 912,	//(0x0390)
 	CMSG_TICKCOUNT_QUERY_RESPONSE                = 913,	//(0x0391)
@@ -870,6 +876,7 @@ enum Opcodes {
 	SMSG_SET_COMBO_POINTS                        = 925,	//(0x039D)
 	SMSG_PET_LEARNT_SPELL                        = 932,	//(0x03A4)
 	SMSG_TARGET_CAST_RESULT                      = 934,	//(0x03A6)
+	MSG_MOVE_FLY_DOWN_UNK						 = 935, //(0x03A7)
 	CMSG_REPORT_SPAM                             = 953,	//(0x03B9)
 	SMSG_REPORT_SPAM_RESPONSE                    = 954,	//(0x03BA)
 	SMSG_ACTIVATE_SPAM_REPORTING                 = 955,	//(0x03BB)

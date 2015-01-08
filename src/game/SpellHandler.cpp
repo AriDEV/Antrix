@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Packet Handler File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -18,7 +23,7 @@ void WorldSession::HandleUseItemOpcode(WorldPacket& recvPacket)
 {
 	if(!_player->IsInWorld()) return;
 	typedef std::list<Aura*> AuraList;
-	WorldPacket data;
+	
 	Player* p_User = GetPlayer();
 	sLog.outDetail("WORLD: got use Item packet, data length = %i",recvPacket.size());
 	int8 tmp1,slot,tmp3;
@@ -44,7 +49,9 @@ void WorldSession::HandleUseItemOpcode(WorldPacket& recvPacket)
 		Quest *qst = QuestStorage.LookupEntry(itemProto->QuestId);
 		if(!qst) 
 			return;
-		sQuestMgr.BuildQuestDetails(&data, qst, tmpItem, 0);
+
+        WorldPacket data;
+        sQuestMgr.BuildQuestDetails(&data, qst, tmpItem, 0);
 		SendPacket(&data);
 	}
 	
@@ -160,16 +167,12 @@ void WorldSession::HandleCastSpellOpcode(WorldPacket& recvPacket)
 			switch(weapon->GetProto()->SubClass)
 			{
 			case 2:			 // bows
-				spellid = SPELL_RANGED_BOW;
-				break;
 			case 3:			 // guns
-				spellid = SPELL_RANGED_GUN;
+            case 18:		 // crossbow
+				spellid = SPELL_RANGED_GENERAL;
 				break;
 			case 16:			// thrown
 				spellid = SPELL_RANGED_THROW;
-				break;
-			case 18:			// crossbow
-				spellid = SPELL_RANGED_CROSSBOW;
 				break;
 			case 19:			// wands
 				spellid = SPELL_RANGED_WAND;
@@ -184,6 +187,11 @@ void WorldSession::HandleCastSpellOpcode(WorldPacket& recvPacket)
 			
 			if(!_player->m_onAutoShot)
 			{
+				if(_player->IsMounted())
+				{
+                    _player->SendCastResult(spellInfo->Id, SPELL_FAILED_NOT_MOUNTED, 0);
+					return;
+				}
 				_player->m_AutoShotStartX = _player->GetPositionX();
 				_player->m_AutoShotStartY = _player->GetPositionY();
 				_player->m_AutoShotStartZ = _player->GetPositionZ();
@@ -211,12 +219,8 @@ void WorldSession::HandleCastSpellOpcode(WorldPacket& recvPacket)
 
         if(GetPlayer()->m_currentSpell && GetCastTime(sCastTime.LookupEntry(spellInfo->CastingTimeIndex)))
         {
-            StackWorldPacket<9> data(SMSG_CAST_RESULT);
-            data << spellInfo->Id;
-		    data << (uint8)SPELL_FAILED_SPELL_IN_PROGRESS;
-            _player->GetSession()->SendPacket(&data);
+            _player->SendCastResult(spellInfo->Id, SPELL_FAILED_SPELL_IN_PROGRESS, 0);
             return;
-
         }
 		Spell *spell = new Spell(GetPlayer(), spellInfo, false, NULL);
 	
@@ -237,19 +241,12 @@ void WorldSession::HandleCancelCastOpcode(WorldPacket& recvPacket)
 void WorldSession::HandleCancelAuraOpcode( WorldPacket& recvPacket)
 {
 	uint32 spellId;
-	//uint64 guid;
 	recvPacket >> spellId;
-	Player *plyr = GetPlayer();
 	
-	if(plyr && plyr->GetCurrentBattleground() != NULL && spellId == (23333+(plyr->m_bgTeam*2)))
-		plyr->GetCurrentBattleground()->HandleBattlegroundEvent(plyr, NULL, BGEVENT_WSG_PLAYER_DIED_WITH_FLAG);
-	else
+	for(uint32 x = 0; x < MAX_AURAS+MAX_POSITIVE_AURAS; ++x)
 	{
-		for(uint32 x = 0; x < MAX_AURAS+MAX_POSITIVE_AURAS; ++x)
-		{
-			if(_player->m_auras[x] && _player->m_auras[x]->IsPositive() && _player->m_auras[x]->GetSpellId() == spellId)
-				_player->m_auras[x]->Remove();
-		}
+		if(_player->m_auras[x] && _player->m_auras[x]->IsPositive() && _player->m_auras[x]->GetSpellId() == spellId)
+			_player->m_auras[x]->Remove();
 	}
 	sLog.outDebug("removing aura %u",spellId);
 }
@@ -257,7 +254,6 @@ void WorldSession::HandleCancelAuraOpcode( WorldPacket& recvPacket)
 void WorldSession::HandleCancelChannellingOpcode( WorldPacket& recvPacket)
 {
 	uint32 spellId;
-	//uint32 guid ;
 	recvPacket >> spellId;
 
 	Player *plyr = GetPlayer();
@@ -271,7 +267,7 @@ void WorldSession::HandleCancelChannellingOpcode( WorldPacket& recvPacket)
 
 void WorldSession::HandleCancelAutoRepeatSpellOpcode(WorldPacket& recv_data)
 {
-	//sLog.outString("Recieved CMSG_CANCEL_AUTO_REPEAT_SPELL message.");
+	//sLog.outString("Received CMSG_CANCEL_AUTO_REPEAT_SPELL message.");
 	//on original we automatically enter combat when creature got close to us
 //	GetPlayer()->GetSession()->OutPacket(SMSG_CANCEL_COMBAT);
 	GetPlayer()->m_onAutoShot = false;
@@ -285,23 +281,43 @@ void WorldSession::HandleAddDynamicTargetOpcode(WorldPacket & recvPacket)
 	recvPacket >> guid >> spellid >> flags;
 	
 	SpellEntry * sp = sSpellStore.LookupEntry(spellid);
-	if(!_player->m_CurrentCharm || guid != _player->m_CurrentCharm->GetGUID())
-		return;
-
+	// Summoned Elemental's Freeze
+    if (spellid == 33395)
+    {
+        if (!_player->m_Summon)
+            return;
+    }
+    else if (!_player->m_CurrentCharm || guid != _player->m_CurrentCharm->GetGUID())
+    {
+        return;
+    }
+	
 	/* burlex: this is.. strange */
 	SpellCastTargets targets;
 	targets.m_targetMask = flags;
 
 	if(flags == 0)
 		targets.m_unitTarget = guid;
-	else if(flags == 2)
+	else if(flags == 0x02)
 	{
 		WoWGuid guid;
 		recvPacket >> flags;		// skip one byte
 		recvPacket >> guid;
 		targets.m_unitTarget = guid.GetOldGuid();
 	}
-
-	Spell * pSpell = new Spell(_player->m_CurrentCharm, sp, false, 0);
-	pSpell->prepare(&targets);
+	else if(flags == 0x40)
+	{
+		recvPacket >> flags;		// skip one byte
+		recvPacket >> targets.m_destX >> targets.m_destY >> targets.m_destZ;
+	}
+	if(spellid == 33395)	// Summoned Water Elemental's freeze
+	{
+		Spell * pSpell = new Spell(_player->m_Summon, sp, false, 0);
+		pSpell->prepare(&targets);
+	}
+	else			// trinket?
+	{
+		Spell * pSpell = new Spell(_player->m_CurrentCharm, sp, false, 0);
+		pSpell->prepare(&targets);
+	}
 }

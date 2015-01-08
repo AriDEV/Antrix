@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Quest System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -33,20 +38,21 @@ public:
 
 	~QuestMgr();
 
-	uint32 PlayerMeetsReqs(Player* plr, Quest* qst);
+	uint32 PlayerMeetsReqs(Player* plr, Quest* qst, bool skiplevelcheck);
 
 	uint32 CalcStatus(Object* quest_giver, Player* plr);
 	uint32 CalcQuestStatus(Object* quest_giver, Player* plr, QuestRelation* qst);
-	uint32 CalcQuestStatus(Object* quest_giver, Player* plr, Quest* qst, uint8 type);
+	uint32 CalcQuestStatus(Object* quest_giver, Player* plr, Quest* qst, uint8 type, bool skiplevelcheck);
 	uint32 ActiveQuestsCount(Object* quest_giver, Player* plr);
 
 	//Packet Forging...
 	void BuildOfferReward(WorldPacket* data,Quest* qst, Object* qst_giver, uint32 menutype);
 	void BuildQuestDetails(WorldPacket* data, Quest* qst, Object* qst_giver, uint32 menutype);	
-	void BuildRequestItems(WorldPacket* data, Quest* qst, Object* qst_giver, uint32 menutype);
+	void BuildRequestItems(WorldPacket* data, Quest* qst, Object* qst_giver, uint32 status);
 	void BuildQuestComplete(Player*, Quest* qst);
 	void BuildQuestList(WorldPacket* data, Object* qst_giver, Player* plr);
 	bool OnActivateQuestGiver(Object *qst_giver, Player *plr);
+    bool isRepeatableQuestFinished(Player *plr, Quest *qst);
 
 	void SendQuestUpdateAddKill(Player* plr, uint32 questid, uint32 entry, uint32 count, uint32 tcount, uint64 guid);
 	void BuildQuestUpdateAddItem(WorldPacket* data, uint32 itemid, uint32 count);
@@ -60,10 +66,12 @@ public:
 	void OnPlayerExploreArea(Player* plr, uint32 AreaID);
 	void OnQuestFinished(Player* plr, Quest* qst, Object *qst_giver, uint32 reward_slot);
 
+	void GiveQuestRewardReputation(Player* plr, Quest* qst, Object *qst_giver);
+
 	uint32 GenerateQuestXP(Player *pl, Quest *qst);
 
 	void SendQuestInvalid( INVALID_REASON reason, Player *plyr);
-	void SendQuestFailed(FAILED_REASON failed, Player *plyr);
+	void SendQuestFailed(FAILED_REASON failed, Quest *qst, Player *plyr);
 	void SendQuestUpdateFailed(Quest *pQuest, Player *plyr);
 	void SendQuestUpdateFailedTimer(Quest *pQuest, Player *plyr);
 	void SendQuestLogFull(Player *plyr);

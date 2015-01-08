@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -53,38 +58,6 @@ enum EventTypes
 	EVENT_GAMEOBJECT_FISH_HOOKED,
 	EVENT_GAMEOBJECT_FISH_NOT_HOOKED,
 	EVENT_GAMEOBJECT_END_FISHING,
-	EVENT_BATTLEGROUND_REMOVE,
-	EVENT_BATTLEGROUND_ALMOST_START,
-	EVENT_BATTLEGROUND_START,
-	EVENT_BATTLEGROUND_REVIVE_PLAYERS,
-	EVENT_BATTLEGROUND_STABLE_RCONTEST,
-	EVENT_BATTLEGROUND_FARM_RCONTEST,
-	EVENT_BATTLEGROUND_BlACKSMITH_RCONTEST,
-	EVENT_BATTLEGROUND_MINE_RCONTEST,
-	EVENT_BATTLEGROUND_LUMBERMILL_RCONTEST,
-	EVENT_BATTLEGROUND_UPDATE_RESOURCES_ALLIANCE,
-	EVENT_BATTLEGROUND_UPDATE_RESOURCES_HORDE,
-	EVENT_BATTLEGROUND_SPAWN_BUFF1,
-	EVENT_BATTLEGROUND_SPAWN_BUFF2,
-	EVENT_BATTLEGROUND_SPAWN_BUFF3,
-	EVENT_BATTLEGROUND_SPAWN_BUFF4,
-	EVENT_BATTLEGROUND_SPAWN_BUFF5,
-	EVENT_BATTLEGROUND_SPAWN_BUFF6,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE1,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE2,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE3,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE4,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE5,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE6,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE7,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE8,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE9,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE10,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE11,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE12,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE13,
-	EVENT_BATTLEGROUND_AV_CAPTURE_BASE14,
 	EVENT_PLAYER_REPEAT_SHOT,
 	EVENT_PLAYER_ACTIVATE_GAMEOBJECT,
 	EVENT_UNIT_REPEAT_MSG,
@@ -175,19 +148,30 @@ enum EventTypes
 	EVENT_PARRY_FLAG_EXPIRE,		
 	EVENT_CRIT_FLAG_EXPIRE,		
 	EVENT_GMSCRIPT_EVENT,
+	EVENT_RELOCATE,
+	EVENT_BATTLEGROUND_QUEUE_UPDATE,
+	EVENT_BATTLEGROUND_SPAWN_BUFF,
+	EVENT_BATTLEGROUND_COUNTDOWN,
+	EVENT_BATTLEGROUND_CLOSE,
+};
+
+enum EventFlags
+{
+	EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT = 0x1,
 };
 
 struct SERVER_DECL TimedEvent
 {
-	TimedEvent(void* object, CallbackBase* callback, uint32 flags, time_t time, uint32 repeat) : 
-		obj(object), cb(callback), eventFlags(flags), msTime(time), currTime(time), repeats(repeat), deleted(false), ref(0) {}
+	TimedEvent(void* object, CallbackBase* callback, uint32 type, time_t time, uint32 repeat, uint32 flags) : 
+		obj(object), cb(callback), eventType(type), msTime(time), currTime(time), repeats(repeat), deleted(false), eventFlag(flags),ref(0) {}
 		
 	void *obj;
 	CallbackBase *cb;
-	uint32 eventFlags;
+	uint32 eventType;
+	uint16 eventFlag;
 	time_t msTime;
 	time_t currTime;
-	uint32 repeats;
+	uint16 repeats;
 	bool deleted;
 	int instanceId;
 	volatile long ref;
@@ -235,50 +219,50 @@ class SERVER_DECL EventMgr : public Singleton < EventMgr >
 	friend class MiniEventMgr;
 public:
 	template <class Class>
-		void AddEvent(Class *obj, void (Class::*method)(), uint32 flags, uint32 time, uint32 repeats)
+		void AddEvent(Class *obj, void (Class::*method)(), uint32 type, uint32 time, uint32 repeats, uint32 flags)
 	{
 		// create a timed event
-		TimedEvent * event = new TimedEvent(obj, new CallbackP0<Class>(obj, method), flags, time, repeats);
+		TimedEvent * event = new TimedEvent(obj, new CallbackP0<Class>(obj, method), type, time, repeats, flags);
 
 		// add this to the object's list, updating will all be done later on...
 		obj->event_AddEvent(event);
 	}
 
 	template <class Class, typename P1>
-		void AddEvent(Class *obj, void (Class::*method)(P1), P1 p1, uint32 flags, uint32 time, uint32 repeats)
+		void AddEvent(Class *obj, void (Class::*method)(P1), P1 p1, uint32 type, uint32 time, uint32 repeats, uint32 flags)
 	{
 		// create a timed event
-		TimedEvent * event = new TimedEvent(obj, new CallbackP1<Class, P1>(obj, method, p1), flags, time, repeats);
+		TimedEvent * event = new TimedEvent(obj, new CallbackP1<Class, P1>(obj, method, p1), type, time, repeats, flags);
 
 		// add this to the object's list, updating will all be done later on...
 		obj->event_AddEvent(event);
 	}
 
 	template <class Class, typename P1, typename P2>
-		void AddEvent(Class *obj, void (Class::*method)(P1,P2), P1 p1, P2 p2, uint32 flags, uint32 time, uint32 repeats)
+		void AddEvent(Class *obj, void (Class::*method)(P1,P2), P1 p1, P2 p2, uint32 type, uint32 time, uint32 repeats, uint32 flags)
 	{
 		// create a timed event
-		TimedEvent * event = new TimedEvent(obj, new CallbackP2<Class, P1, P2>(obj, method, p1, p2), flags, time, repeats);
+		TimedEvent * event = new TimedEvent(obj, new CallbackP2<Class, P1, P2>(obj, method, p1, p2), type, time, repeats, flags);
 
 		// add this to the object's list, updating will all be done later on...
 		obj->event_AddEvent(event);
 	}
 
 	template <class Class, typename P1, typename P2, typename P3>
-		void AddEvent(Class *obj,void (Class::*method)(P1,P2,P3), P1 p1, P2 p2, P3 p3, uint32 flags, uint32 time, uint32 repeats)
+		void AddEvent(Class *obj,void (Class::*method)(P1,P2,P3), P1 p1, P2 p2, P3 p3, uint32 type, uint32 time, uint32 repeats, uint32 flags)
 	{
 		// create a timed event
-		TimedEvent * event = new TimedEvent(obj, new CallbackP3<Class, P1, P2, P3>(obj, method, p1, p2, p3), flags, time, repeats);
+		TimedEvent * event = new TimedEvent(obj, new CallbackP3<Class, P1, P2, P3>(obj, method, p1, p2, p3), type, time, repeats, flags);
 
 		// add this to the object's list, updating will all be done later on...
 		obj->event_AddEvent(event);
 	}
 
 	template <class Class, typename P1, typename P2, typename P3, typename P4>
-		void AddEvent(Class *obj, void (Class::*method)(P1,P2,P3,P4), P1 p1, P2 p2, P3 p3, P4 p4, uint32 flags, uint32 time, uint32 repeats)
+		void AddEvent(Class *obj, void (Class::*method)(P1,P2,P3,P4), P1 p1, P2 p2, P3 p3, P4 p4, uint32 type, uint32 time, uint32 repeats, uint32 flags)
 	{
 		// create a timed event
-		TimedEvent * event = new TimedEvent(obj, new CallbackP4<Class, P1, P2, P3, P4>(obj, method, p1, p2, p3, p4), flags, time, repeats);
+		TimedEvent * event = new TimedEvent(obj, new CallbackP4<Class, P1, P2, P3, P4>(obj, method, p1, p2, p3, p4), type, time, repeats, flags);
 
 		// add this to the object's list, updating will all be done later on...
 		obj->event_AddEvent(event);

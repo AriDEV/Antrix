@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Item System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -203,7 +208,7 @@ void Item::SaveToDB(int8 containerslot, int8 slot, bool firstsave)
 
 
 	ss << m_uint32Values[ITEM_FIELD_OWNER] << ",";
-	ss << GetGUID() << ",";
+    ss << GetGUIDLow() << ",";
 	ss << m_uint32Values[OBJECT_FIELD_ENTRY] << ",";
 	ss << GetUInt32Value(ITEM_FIELD_CREATOR) << ",";
 	ss << GetUInt32Value(ITEM_FIELD_STACK_COUNT) << ",";
@@ -258,7 +263,25 @@ void Item::SaveToDB(int8 containerslot, int8 slot, bool firstsave)
 
 void Item::DeleteFromDB()
 {
-	CharacterDatabase.Execute("DELETE FROM playeritems WHERE guid ="I64FMTD, GetGUID());
+	if(m_itemProto->ContainerSlots>0)
+	{
+		/* deleting a container */
+		for(uint32 i = 0; i < m_itemProto->ContainerSlots; ++i)
+		{
+			if(((Container*)this)->GetItem(i) != NULL)
+			{
+#ifdef WIN32
+				OutputCrashLogLine("Delting bag with inventority items still!!!! ItemId %u containerslots %u", m_itemProto->ItemId, m_itemProto->ContainerSlots);
+				CStackWalker ws;
+				ws.ShowCallstack();
+#endif
+				/* abort the delete */
+				return;
+			}
+		}
+	}
+
+	CharacterDatabase.Execute("DELETE FROM playeritems WHERE guid = %u", GetGUIDLow());
 }
 
 uint32 GetSkillByProto(uint32 Class, uint32 SubClass)
@@ -502,7 +525,7 @@ int32 Item::AddEnchantment(EnchantEntry * Enchantment, uint32 Duration, bool Per
 	if(Duration)
 	{
 		sEventMgr.AddEvent(this, &Item::RemoveEnchantment, uint32(Slot),
-			EVENT_REMOVE_ENCHANTMENT1 + Slot, Duration * 1000, 1);
+			EVENT_REMOVE_ENCHANTMENT1 + Slot, Duration * 1000, 1,0);
 	}
 
 	// No need to send the log packet, if the owner isn't in world (we're still loading)
@@ -524,7 +547,10 @@ int32 Item::AddEnchantment(EnchantEntry * Enchantment, uint32 Duration, bool Per
 			m_owner->SendTradeUpdate();
 		}
 	
-		ApplyEnchantmentBonus(Slot, APPLY);
+		/* Only apply the enchantment bonus if we're equipped */
+		uint8 slot = m_owner->GetItemInterface()->GetInventorySlotByGuid(GetGUID());
+		if(slot > EQUIPMENT_SLOT_START && slot < EQUIPMENT_SLOT_END)
+            ApplyEnchantmentBonus(Slot, APPLY);
 	}
 
 	return Slot;
@@ -587,7 +613,7 @@ void Item::ApplyEnchantmentBonus(uint32 Slot, bool Apply)
 		{
 		case 1:		 // Trigger spell on melee attack.
 			{
-				if(Apply)
+				if(Apply && Entry->spell[c] != 0)
 				{
 					// Create a proc trigger spell
 
@@ -598,14 +624,8 @@ void Item::ApplyEnchantmentBonus(uint32 Slot, bool Apply)
 					TS.procCharges = 0;
 					TS.procChance = Entry->min[c] ? Entry->min[c] : 35;
 					TS.deleted = false;
-
-					
-						if(Entry->spell[c] != 0)
-						{
-							TS.spellId = Entry->spell[c];
-							m_owner->m_procSpells.push_back(TS);
-						}
-					
+					TS.spellId = Entry->spell[c];
+					m_owner->m_procSpells.push_back(TS);
 				}
 				else
 				{

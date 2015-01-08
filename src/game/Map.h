@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,6 +29,8 @@ class TemplateMgr;
 struct MapInfo;
 typedef std::map<uint32, MapMgr*> InstanceMap;
 class TerrainMgr;
+
+#include "TerrainMgr.h"
 
 struct Formation;
 
@@ -95,7 +102,6 @@ public:
 	MapMgr * GetInstanceByCreator(Player *pCreator);
 	MapMgr * GetInstanceByGroupInstanceId(uint32 InstanceID, bool Lock);
 	MapMgr * InstanceExists(uint32 instanceId);
-	inline TerrainMgr * GetTerrainMgr() { return _terrain; }
 	inline string GetNameString() { return name; }
 	inline const char* GetName() { return name.c_str(); }
 	inline MapEntry* GetDBCEntry() { return me; }
@@ -104,6 +110,7 @@ public:
 	{
 		ASSERT(cellx < _sizeX);
 		ASSERT(celly < _sizeY);
+		if(spawns[cellx]==NULL) return NULL;
 
 		return spawns[cellx][celly];
 	}
@@ -111,6 +118,12 @@ public:
 	{
 		ASSERT(cellx < _sizeX);
 		ASSERT(celly < _sizeY);
+		if(spawns[cellx]==NULL)
+		{
+			spawns[cellx] = new CellSpawns*[_sizeY];
+			memset(spawns[cellx],0,sizeof(CellSpawns*)*_sizeY);
+		}
+
 		if(spawns[cellx][celly] == 0)
 			spawns[cellx][celly] = new CellSpawns;
 		return spawns[cellx][celly];
@@ -119,6 +132,82 @@ public:
 	void LoadSpawns(bool reload);//set to true to make clean up
 	uint32 CreatureSpawnCount;
 	uint32 GameObjectSpawnCount;
+
+	inline float  GetLandHeight(float x, float y)
+	{ 
+		if(_terrain)
+		{
+			return _terrain->GetLandHeight(x, y);
+		}
+		else
+		{
+			return 999999.0f;
+		}
+	}
+
+	inline float  GetWaterHeight(float x, float y) 
+	{ 
+		if(_terrain)
+		{ 
+			return _terrain->GetWaterHeight(x, y); 
+		}
+		else
+		{ 
+			return 999999.0f; 
+		}
+	}
+
+	inline uint8  GetWaterType(float x, float y)
+	{
+		if(_terrain)
+		{ 
+			return _terrain->GetWaterType(x, y);
+		}
+		else
+		{ 
+			return 0;
+		}
+	}
+
+	inline uint8  GetWalkableState(float x, float y)
+	{
+		if(_terrain)
+		{ 
+			return _terrain->GetWalkableState(x, y);
+		}
+		else
+		{ 
+			return 1; 
+		}
+	}
+
+	inline uint16 GetAreaID(float x, float y)
+	{
+		if(_terrain)
+		{ 
+			return _terrain->GetAreaID(x, y);
+		}
+		else
+		{ 
+			return 0xFFFF;
+		}
+	}
+
+	inline void CellGoneActive(uint32 x, uint32 y)
+	{ 
+		if(_terrain)
+		{ 
+			_terrain->CellGoneActive(x,y);
+		}
+	}
+
+	inline void CellGoneIdle(uint32 x,uint32 y)
+	{ 
+		if(_terrain)
+		{ 
+			_terrain->CellGoneIdle(x,y);
+		}
+	}
 
 private:
 	InstanceMap	 _instances;	
@@ -131,8 +220,9 @@ private:
 	
 
 	//new stuff
-	CellSpawns *spawns[_sizeX][_sizeY];
-
+	CellSpawns **spawns[_sizeX];
+public:
+	CellSpawns staticSpawns;
 };
 
 #endif

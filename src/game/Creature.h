@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -51,9 +56,11 @@ struct CreatureInfo
 struct CreatureProto
 {
 	uint32 Id;
-	uint32 Level;
+	uint32 MinLevel;
+	uint32 MaxLevel;
 	uint32 Faction;
-	uint32 Health;
+	uint32 MinHealth;
+	uint32 MaxHealth;
 	uint32 Mana;
 	float  Scale;
 	uint32	NPCFLags;
@@ -80,6 +87,8 @@ struct CreatureProto
 	char * aura_string;
 	uint32 boss;
 	uint32 money;
+	uint32 invisibility_type;
+	uint32 death_state;
 
 	/* AI Stuff */
 	bool m_canRangedAttack;
@@ -139,7 +148,14 @@ enum FAMILY
 	FAMILY_HYENA,
 	FAMILY_OWL,
 	FAMILY_WIND_SERPENT,
-	FAMILY_REMOTE_CONTROL
+	FAMILY_REMOTE_CONTROL,
+	FAMILY_FELGUARD,
+	FAMILY_DRAGONHAWK,
+	FAMILY_RAVAGER,
+	FAMILY_WARP_STALKER,
+	FAMILY_SPOREBAT,
+	FAMILY_NETHER_RAY,
+	FAMILY_SERPENT
 };
 
 enum ELITE
@@ -340,7 +356,7 @@ public:
 
 	void OnJustDied();
 	void OnRemoveCorpse();
-	void OnRespawn();
+	void OnRespawn(MapMgr * m);
 	void SafeDelete();
 	//void Despawn();
 	void SummonExpire(); // this is used for guardians. They are non respawnable creatures linked to a player
@@ -348,7 +364,7 @@ public:
 
 	// In Range
 	void AddInRangeObject(Object* pObj);
-	void RemoveInRangeObject(Object* pObj);
+	void OnRemoveInRangeObject(Object* pObj);
 	void ClearInRangeSet();
 
 	// Demon
@@ -412,9 +428,15 @@ public:
 	WayPointMap * m_custom_waypoint_map;
 	Player * m_escorter;
 	void DestroyCustomWaypointMap();
-
+	bool IsInLimboState() { return m_limbostate; }
+	uint32 GetLineByFamily(CreatureFamilyEntry * family){return family->skilline ? family->skilline : 0;};
+	void RemoveLimboState(Unit * healer);
+	void SetGuardWaypoints();
+	bool m_corpseEvent;
+	MapCell * m_respawnCell;
 protected:
 	CreatureAIScript *_myScriptClass;
+	bool m_limbostate;
 	GossipScript *_gossipScript;
 	Trainer* mTrainer;
 

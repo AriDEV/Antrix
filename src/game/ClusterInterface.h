@@ -1,3 +1,22 @@
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
 #ifdef CLUSTERING
 #ifndef _CLUSTERINTERFACE_H
 #define _CLUSTERINTERFACE_H
@@ -10,13 +29,18 @@ typedef void(ClusterInterface::*ClusterInterfaceHandler)(WorldPacket&);
 
 class ClusterInterface : public Singleton<ClusterInterface>
 {
-	typedef HM_NAMESPACE::hash_map<uint32, RPlayerInfo*> OnlinePlayerMap;
-	OnlinePlayerMap _onlinePlayers;
+	OnlinePlayerStorageMap _onlinePlayers;
 	WSClient * _clientSocket;
 	FastQueue<WorldPacket*, Mutex> _pckQueue;
 	time_t _lastConnectTime;
 	WorldSession * _sessions[MAX_SESSIONS];
+	bool m_connected;
+	uint8 key[20];
+	uint32 m_latency;
+
 public:
+
+	string GenerateVersionString();
 
 	static ClusterInterfaceHandler PHandlers[IMSG_NUM_TYPES];
 	static void InitHandlers();
@@ -30,7 +54,7 @@ public:
 	RPlayerInfo * GetPlayer(uint32 guid)
 	{
 		// this should use a mutex - burlex
-		OnlinePlayerMap::iterator itr = _onlinePlayers.find(guid);
+		OnlinePlayerStorageMap::iterator itr = _onlinePlayers.find(guid);
 		return (itr == _onlinePlayers.end()) ? 0 : itr->second;
 	}
 
@@ -44,6 +68,7 @@ public:
 	void HandlePlayerLogin(WorldPacket & pck);
 	void HandlePackedPlayerInfo(WorldPacket & pck);
 	void HandleWoWPacket(WorldPacket & pck);
+	void HandlePlayerChangedServers(WorldPacket & pck);
 
 	inline void QueuePacket(WorldPacket * pck) { _pckQueue.Push(pck); }
 

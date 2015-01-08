@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -17,7 +22,6 @@
 
 #include "Common.h"
 #include "Singleton.h"
-#include "TextLogger.h"
 
 class WorldPacket;
 class WorldSession;
@@ -41,6 +45,7 @@ class WorldSession;
 #define TBLUE 6
 
 #endif
+std::string FormatOutputString(const char * Prefix, const char * Description, bool useTimeStamp);
 
 class SERVER_DECL oLog : public Singleton< oLog > {
 public:
@@ -59,7 +64,6 @@ public:
   void SetScreenLoggingLevel(int32 level);
 
   void outColor(uint32 colorcode, const char * str, ...);
-  TextLogger * fileLogger;
   
 #ifdef WIN32
   HANDLE stdout_handle, stderr_handle;
@@ -68,21 +72,29 @@ public:
   int32 m_screenLogLevel;
 };
 
-class SessionLogWriter : public TextLogger
+class SessionLogWriter
 {
+	FILE * m_file;
+	char * m_filename;
 public:
-	SessionLogWriter(const char * filename, bool open) : TextLogger(filename, open) {}
+	SessionLogWriter(const char * filename, bool open);
+	~SessionLogWriter();
 
 	void write(const char* format, ...);
 	void writefromsession(WorldSession* session, const char* format, ...);
+	inline bool IsOpen() { return (m_file != NULL); }
+	void Open();
+	void Close();
 };
 
 extern SessionLogWriter * Anticheat_Log;
 extern SessionLogWriter * GMCommand_Log;
+extern SessionLogWriter * Player_Log;
 
 #define sLog oLog::getSingleton()
 #define sCheatLog (*Anticheat_Log)
 #define sGMLog (*GMCommand_Log)
+#define sPlrLog (*Player_Log)
 
 class WorldLog : public Singleton<WorldLog>
 {
@@ -94,9 +106,9 @@ public:
 	void Enable();
 	void Disable();
 private:
+	FILE * m_file;
 	Mutex mutex;
 	bool bEnabled;
-	TextLogger * log;
 };
 
 #define sWorldLog WorldLog::getSingleton()

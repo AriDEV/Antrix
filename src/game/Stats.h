@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Stat Handlers
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -165,6 +170,9 @@ inline uint32 CalculateXpToGive(Unit *pVictim, Unit *pAttacker)
 	if(victimI)
 		if(victimI->Type == CRITTER)
 			return 0;
+	//not wowwikilike but more balanced
+	if ((int32)pVictim->getLevel()-(int32)pAttacker->getLevel()>10)
+		return 0;
 
 	uint32 max_level = sWorld.Expansion1LevelCap;
 	if(pAttacker->IsPlayer())
@@ -551,7 +559,7 @@ inline uint32 CalculateDamage(Unit *pAttacker, Unit *pVictim, uint32 damage_type
 	if(offset == UNIT_FIELD_MINRANGEDDAMAGE)
 	{
 //		//starting from base attack power then we apply mods on it
-//		ap += pAttacker->GetRAP();
+		//ap += pAttacker->GetRAP();
 		ap += pVictim->RAPvModifier;
 
 		if(!pVictim->IsPlayer())
@@ -584,8 +592,6 @@ inline uint32 CalculateDamage(Unit *pAttacker, Unit *pVictim, uint32 damage_type
 			else
 				wspeed = (float)pAttacker->GetUInt32Value(UNIT_FIELD_RANGEDATTACKTIME);
 
-            ap += pAttacker->GetRAP();
-			ap += pVictim->RAPvModifier;
 		}
 		else
 		{

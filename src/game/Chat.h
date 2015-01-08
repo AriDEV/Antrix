@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Chat/Command System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -22,34 +27,36 @@ class Unit;
 
 enum ChatMsg
 {
-	CHAT_MSG_SAY								  = 0x00,
-	CHAT_MSG_PARTY								= 0x01,
-	CHAT_MSG_RAID								 = 0x02,
-	CHAT_MSG_GUILD								= 0x03,
-	CHAT_MSG_OFFICER							  = 0x04,
-	CHAT_MSG_YELL								 = 0x05,
-	CHAT_MSG_WHISPER							  = 0x06,
-	CHAT_MSG_WHISPER_INFORM					   = 0x07,
-	CHAT_MSG_EMOTE								= 0x08,
-	CHAT_MSG_TEXT_EMOTE						   = 0x09,
-	CHAT_MSG_SYSTEM							   = 0x0A,
-	CHAT_MSG_MONSTER_SAY						  = 0x0B,
-	CHAT_MSG_MONSTER_YELL						 = 0x0C,
-	CHAT_MSG_MONSTER_EMOTE						= 0x0D,
-	CHAT_MSG_CHANNEL							  = 0x0E,
-	CHAT_MSG_CHANNEL_JOIN						 = 0x0F,
-	CHAT_MSG_CHANNEL_LEAVE						= 0x10,
-	CHAT_MSG_CHANNEL_LIST						 = 0x11,
-	CHAT_MSG_CHANNEL_NOTICE					   = 0x12,
-	CHAT_MSG_CHANNEL_NOTICE_USER				  = 0x13,
-	CHAT_MSG_AFK								  = 0x14,
-	CHAT_MSG_DND								  = 0x15,
-	CHAT_MSG_COMBAT_LOG						   = 0x16,
-	CHAT_MSG_IGNORED							  = 0x17,
-	CHAT_MSG_SKILL								= 0x18,
-	CHAT_MSG_LOOT								 = 0x19,
-	CHAT_MSG_RAIDLEADER						   = 0x57,
-	CHAT_MSG_RAIDWARNING						= 0x58,
+	CHAT_MSG_ADDON									= -1,
+	CHAT_MSG_SAY									= 0x00,
+	CHAT_MSG_PARTY									= 0x01,
+	CHAT_MSG_RAID									= 0x02,
+	CHAT_MSG_GUILD									= 0x03,
+	CHAT_MSG_OFFICER								= 0x04,
+	CHAT_MSG_YELL									= 0x05,
+	CHAT_MSG_WHISPER								= 0x06,
+	CHAT_MSG_WHISPER_INFORM							= 0x07,
+	CHAT_MSG_EMOTE									= 0x08,
+	CHAT_MSG_TEXT_EMOTE								= 0x09,
+	CHAT_MSG_SYSTEM									= 0x0A,
+	CHAT_MSG_MONSTER_SAY							= 0x0B,
+	CHAT_MSG_MONSTER_YELL							= 0x0C,
+	CHAT_MSG_MONSTER_EMOTE							= 0x0D,
+	CHAT_MSG_CHANNEL								= 0x0E,
+	CHAT_MSG_CHANNEL_JOIN							= 0x0F,
+	CHAT_MSG_CHANNEL_LEAVE							= 0x10,
+	CHAT_MSG_CHANNEL_LIST							= 0x11,
+	CHAT_MSG_CHANNEL_NOTICE							= 0x12,
+	CHAT_MSG_CHANNEL_NOTICE_USER					= 0x13,
+	CHAT_MSG_AFK									= 0x14,
+	CHAT_MSG_DND									= 0x15,
+	CHAT_MSG_COMBAT_LOG								= 0x16,
+	CHAT_MSG_IGNORED								= 0x17,
+	CHAT_MSG_SKILL									= 0x18,
+	CHAT_MSG_LOOT									= 0x19,
+	CHAT_MSG_BATTLEGROUND_EVENT						= 0x53,
+	CHAT_MSG_RAIDLEADER								= 0x57,
+	CHAT_MSG_RAIDWARNING							= 0x58,
 };
 
 
@@ -99,7 +106,7 @@ public:
 	char			   CommandGroup;
 	bool (ChatHandler::*Handler)(const char* args, WorldSession *m_session) ;
 	std::string		Help;
-	ChatCommand *	  ChildCommands;
+	ChatCommand *    ChildCommands;
 	uint32			 NormalValueField;
 	uint32			 MaxValueField;
 	uint16			 ValueType;	// 0 = nothing, 1 = uint, 2 = float
@@ -151,7 +158,6 @@ public:
 	void BlueSystemMessageToPlr(Player* plr, const char *message, ...);
 	void SystemMessageToPlr(Player *plr, const char *message, ...);
 	   
-
 protected:
 
 	bool hasStringAbbr(const char* s1, const char* s2);
@@ -265,6 +271,7 @@ protected:
 	bool HandleListAIAgentCommand(const char* args, WorldSession *m_session);
 
 	// Level 3 commands
+	bool HandleRenameGuildCommand(const char* args, WorldSession *m_session);
 	bool HandleMassSummonCommand(const char* args, WorldSession *m_session);
 	bool HandleSecurityCommand(const char* args, WorldSession *m_session);
 	bool HandleWorldPortCommand(const char* args, WorldSession *m_session);
@@ -409,6 +416,7 @@ protected:
 
 	bool HandleBanAccountCommand(const char * args, WorldSession * m_session);
 	bool HandleIPBanCommand(const char * args, WorldSession * m_session);
+	bool HandleIPUnBanCommand(const char * args, WorldSession * m_session);
 
 	bool HandleRemoveItemCommand(const char * args, WorldSession * m_session);
 	bool HandleRenameCommand(const char * args, WorldSession * m_session);
@@ -433,6 +441,8 @@ protected:
 	bool HandleAIAgentDebugBegin(const char * args, WorldSession * m_session);
 	bool HandleAIAgentDebugContinue(const char * args, WorldSession * m_session);
 	bool HandleAIAgentDebugSkip(const char * args, WorldSession * m_session);
+
+	bool HandleAddGuardCommand(const char * args, WorldSession * m_session);
 };
 
 

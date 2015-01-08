@@ -1,19 +1,42 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include <Common.h>
 #include <svn_revision.h>
+
+#include "CrashHandler.h"
+#include "Log.h"
+
+void OutputCrashLogLine(const char * format, ...)
+{
+        std::string s = FormatOutputString("logs", "CrashLog", true);
+        FILE * m_file = fopen(s.c_str(), "a");
+        if(!m_file) return;
+
+        va_list ap;
+        va_start(ap, format);
+        vfprintf(m_file, format, ap);
+        fprintf(m_file, "\n");
+        fclose(m_file);
+        va_end(ap);
+}
+
 #ifdef WIN32
 
 /* *
@@ -23,15 +46,13 @@
 */
 #  pragma warning( disable : 4311 )
 
-#include "CrashHandler.h"
-#include "TextLogger.h"
 #include <stdio.h>
 #include <time.h>
 #include <windows.h>
+#include "Log.h"
 #include <tchar.h>
 
 bool ON_CRASH_BREAK_DEBUGGER;
-extern TextLogger * Crash_Log;
 
 void StartCrashHandler()
 {
@@ -148,10 +169,14 @@ static const TCHAR *GetExceptionDescription(DWORD ExceptionCode)
 
 void echo(const char * format, ...)
 {
+	std::string s = FormatOutputString("logs", "CrashLog", true);
+	FILE * m_file = fopen(s.c_str(), "a");
+	if(!m_file) return;
+
 	va_list ap;
 	va_start(ap, format);
-	vprintf(format, ap);
-	Crash_Log->AddSFormat(false, format, ap);
+	vfprintf(m_file, format, ap);
+	fclose(m_file);
 	va_end(ap);
 }
 
@@ -264,8 +289,13 @@ void CStackWalker::OnCallstackEntry(CallstackEntryType eType, CallstackEntry &en
 
 void CStackWalker::OnOutput(LPCSTR szText)
 {
+	std::string s = FormatOutputString("logs", "CrashLog", true);
+	FILE * m_file = fopen(s.c_str(), "a");
+	if(!m_file) return;
+
 	printf("   %s", szText);
-	Crash_Log->AddFormat("   %s", szText);
+	fprintf(m_file, "   %s\n", szText);
+	fclose(m_file);
 }
 
 

@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -83,12 +88,13 @@ public:
 	MapMgr * GetInstance(uint32 mapid, Object* obj);
 	MapMgr * GetInstance(uint32 mapid, uint32 instanceId);
 	MapMgr * GetInstance(uint32 instanceId);
-	MapMgr * GetInstanceByGroupInstanceId(uint32 InstanceID, uint32 mapid, bool Lock);
+	MapMgr * ISMGetInstanceBeforeRemoval(uint32 InstanceID, uint32 mapid, bool Lock);
 	MapMgr * GetInstanceByGroup(Group *pGroup, Player *pPlayer, MapInfo *pMapInfo);
 	MapMgr * GetInstanceByCreator(Player *pCreator, MapInfo *pMapInfo);
 
 	//Normal instance management
 	uint32 CreateInstance(Group *pGroup, Player *pPlayer, uint32 mapid, uint32 instanceid = 0, uint32 creation = 0, MapMgr ** destptr = 0, uint32 difficulty = 0);
+	uint32 CreateInstance(uint32 mapid, uint32 instanceid, MapMgr ** destptr);
 
     void DeleteInstance(uint32 instanceid, uint32 mapid);
 	bool CheckInstanceForObject(Object *obj, MapInfo *pMapinfo);
@@ -97,9 +103,6 @@ public:
 	void InstanceSoftReset(MapMgr *mMapMgr);
 	void InstanceHardReset(MapMgr *mMapMgr);
 
-	void CreateBattlegroundInstance(Battleground* m_Battleground);
-	void DestroyBattlegroundInstance(Battleground* m_Battleground);
-	void DestroyBattlegroundInstance(uint32 mapid, uint32 instanceid); //only to be used after bg class is destroyed.
 	void BuildXMLStats(char * m_file);
 	void CreateMap(uint32 mapid) { _CreateMap(mapid); }
 

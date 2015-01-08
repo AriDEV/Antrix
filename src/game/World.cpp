@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Main World System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -40,6 +45,12 @@ World::World()
 	HordePlayers = 0;
 	AlliancePlayers = 0;
 	gm_skip_attunement = false;
+	show_gm_in_who_list = true;
+	map_unload_time=0;
+#ifndef CLUSTERING
+	SocketSendBufSize = WORLDSOCKET_SENDBUF_SIZE;
+	SocketRecvBufSize = WORLDSOCKET_RECVBUF_SIZE;
+#endif
 }
 
 World::~World()
@@ -79,11 +90,7 @@ World::~World()
 	delete TaxiMgr::getSingletonPtr();
 	
 	sLog.outString("  Deleting Battleground Manager...");	
-	delete BattlegroundMgr::getSingletonPtr();
-
-	//Save all characters to db on ctrl+c
-	sLog.outString("Deleting Battleground Manager...");
-	delete BattlegroundMgr::getSingletonPtr();
+	delete CBattlegroundManager::getSingletonPtr();
 
 	sLog.outString("Removing all objects and deleting WorldCreator...\n");
 	delete WorldCreator::getSingletonPtr();
@@ -144,6 +151,8 @@ World::~World()
 	sLog.outString("  DBC files unloaded.\n");
 
 	Storage_Cleanup();
+	for(list<SpellEntry*>::iterator itr = dummyspells.begin(); itr != dummyspells.end(); ++itr)
+		delete *itr;
 }
 
 
@@ -244,6 +253,29 @@ void BasicTaskExecutor::run()
 	cb->execute();
 }
 
+void CreateDummySpell(uint32 id)
+{
+	const char * name = "Dummy Trigger";
+	SpellEntry * sp = new SpellEntry;
+	memset(sp, 0, sizeof(SpellEntry));
+	sp->Id = id;
+	sp->Attributes = 384;
+	sp->AttributesEx = 268435456;
+	sp->Flags3 = 4;
+	sp->CastingTimeIndex=1;
+	sp->procChance=75;
+	sp->rangeIndex=13;
+	sp->EquippedItemClass=uint32(-1);
+	sp->Effect[0]=3;
+	sp->EffectImplicitTargetA[0]=25;
+	sp->buffdescflags=4128828;
+	sp->NameHash=crc32((const unsigned char*)name, strlen(name));
+	sp->dmg_multiplier[0]=1.0f;
+	sp->FH=-1;
+	static_cast<FastIndexedDataStore<SpellEntry>*>(SpellStore::getSingletonPtr())->SetRow(id,sp);
+	sWorld.dummyspells.push_back(sp);
+}
+
 void World::SetInitialWorldSettings()
 {
 	CharacterDatabase.Execute("UPDATE characters SET online = 0 WHERE online = 1");
@@ -299,7 +331,7 @@ void World::SetInitialWorldSettings()
 
 	uint32 start_time = getMSTime();
 
-	sLog.outString("  Loading DBC files...");
+	Log.Notice("World", "Loading DBC files...");
 	new GemPropertiesStore("DBC/GemProperties.dbc");
 	new SpellStore("DBC/Spell.dbc");
 	new LockStore("DBC/Lock.dbc");
@@ -409,7 +441,6 @@ void World::SetInitialWorldSettings()
 	new LfgMgr;
 	new WeatherMgr;
 	new TaxiMgr;
-	new BattlegroundMgr;
 	new AddonMgr;
 	new SocialMgr;
 	new WorldLog;
@@ -451,6 +482,8 @@ void World::SetInitialWorldSettings()
 	MAKE_TASK(ObjectMgr, SetHighestGuids);
 	MAKE_TASK(ObjectMgr, LoadReputationModifiers);
 	MAKE_TASK(ObjectMgr, LoadMonsterSay);
+	MAKE_TASK(WeatherMgr, LoadFromDB);
+	MAKE_TASK(ObjectMgr,LoadGroups);
 
 	MAKE_TASK(ObjectMgr, LoadExtraCreatureProtoStuff);
 	MAKE_TASK(ObjectMgr, LoadExtraItemStuff);
@@ -464,7 +497,7 @@ void World::SetInitialWorldSettings()
 	CommandTableStorage::getSingleton().Load();
 
 	sLog.outString("");
-	sLog.outString("Database loaded in %ums.", getMSTime() - start_time);
+	Log.Notice("World", "Database loaded in %ums.", getMSTime() - start_time);
 	sLog.outString("");
 
 	// calling this puts all maps into our task list.
@@ -480,15 +513,13 @@ void World::SetInitialWorldSettings()
 
 	new InstanceSavingManagement;
 	sInstanceSavingManager.LoadSavedInstances();
-	//Load Corpses
-	objmgr.CorpseCollectorLoad();
 	
 	//Updating spell.dbc--this is slow like hell due to we cant read string fields
 	//dbc method will be changed in future
-	sLog.outString("Processing Spells...");
 	DBCFile dbc;
 
 	dbc.open("DBC/Spell.dbc");
+	Log.Notice("World", "Processing %u spells...", dbc.getRecordCount());
 	uint32 cnt = dbc.getRecordCount();
 	uint32 effect;
 
@@ -514,6 +545,16 @@ void World::SetInitialWorldSettings()
 
 		// get spellentry
 		SpellEntry * sp = sSpellStore.LookupEntry(spellid);
+		for(uint32 b=0;b<3;++b)
+		{
+			if(sp->EffectTriggerSpell[b] != 0 &&
+				static_cast<FastIndexedDataStore<SpellEntry>*>(SpellStore::getSingletonPtr())->LookupEntryForced(
+				sp->EffectTriggerSpell[b]) == NULL)
+			{
+				/* proc spell referencing non-existant spell. create a dummy spell for use w/ it. */
+				CreateDummySpell(sp->EffectTriggerSpell[b]);
+			}
+		}
 
 		sp->proc_interval = 0;//trigger at each event
 
@@ -579,6 +620,8 @@ void World::SetInitialWorldSettings()
 			type |= SPELL_TYPE_WARLOCK_IMMOLATE;
 		else if(strstr(nametext, "Amplify Magic") || strstr(nametext, "Dampen Magic"))
 			type |= SPELL_TYPE_MAGE_AMPL_DUMP;
+		else if(strstr(desc, "Finishing move")==desc)
+			type |= SPELL_TYPE_FINISHING_MOVE;
 
 		/*FILE * f = fopen("C:\\spells.txt", "a");
 		fprintf(f, "case 0x%08X:		// %s\n", namehash, nametext);
@@ -820,11 +863,15 @@ void World::SetInitialWorldSettings()
 							pr|=PROC_ON_CAST_SPELL;
 						else if(strstr(desc,"chance to daze the target"))
 							pr|=PROC_ON_CAST_SPELL;
+						else if(strstr(desc,"finishing moves"))
+							pr|=PROC_ON_CAST_SPELL;
 //						else if(strstr(desc,"shadow bolt, shadowburn, soul fire, incinerate, searing pain and conflagrate"))
 //							pr|=PROC_ON_CAST_SPELL|PROC_TAGRGET_SELF;
 						//we should find that specific spell (or group) on what we will trigger
 						else pr|=PROC_ON_CAST_SPECIFIC_SPELL;
 					}
+					if(strstr(desc, "chance to add an additional combo"))
+							pr|=PROC_ON_CAST_SPELL;
 					if(strstr(desc, "victim of a melee or ranged critical strike"))
 						pr|=PROC_ON_CRIT_HIT_VICTIM;
 					if(strstr(desc, "getting a critical effect from"))
@@ -865,8 +912,22 @@ void World::SetInitialWorldSettings()
 						pr|=PROC_ON_MELEE_ATTACK;		
 					if(strstr(desc,"your Fire damage spell hits"))
 						pr|=PROC_ON_CAST_SPELL;		//this happens only on hit ;)
+					if(strstr(desc,"corruption, curse of agony, siphon life and seed of corruption spells also cause"))
+						pr|=PROC_ON_CAST_SPELL;
+					if(strstr(desc,"pain, mind flay and vampiric touch spells also cause"))
+						pr|=PROC_ON_CAST_SPELL;
 					if(strstr(desc,"shadow damage spells have"))
 						pr|=PROC_ON_CAST_SPELL;
+					if(strstr(desc,"your spell criticals have"))
+						pr|=PROC_ON_SPELL_CRIT_HIT | PROC_ON_SPELL_CRIT_HIT_VICTIM;
+					if(strstr(desc,"after dodging their attack"))
+					{
+						pr|=PROC_ON_DODGE_VICTIM;
+						if(strstr(desc,"add a combo point"))
+							pr|=PROC_TAGRGET_SELF;
+					}
+					if(strstr(desc,"fully resisting"))
+						pr|=PROC_ON_RESIST_VICTIM;
 //					if(strstr(desc,"chill effect to your Blizzard"))
 //						pr|=PROC_ON_CAST_SPELL;	
 					//////////////////////////////////////////////////
@@ -886,6 +947,8 @@ void World::SetInitialWorldSettings()
 						pr|=PROC_ON_MELEE_ATTACK_VICTIM | PROC_ON_RANGED_ATTACK_VICTIM;
 					if(strstr(desc,"damage on hit"))
 						pr|=PROC_ON_ANY_DAMAGE_VICTIM;
+					if(strstr(desc,"after being hit by any damaging attack"))
+						pr|=PROC_ON_ANY_DAMAGE_VICTIM;
 					if(strstr(desc,"striking melee or ranged attackers"))
 						pr|=PROC_ON_MELEE_ATTACK_VICTIM | PROC_ON_RANGED_ATTACK_VICTIM;
 					if(strstr(desc,"damage to attackers when hit"))
@@ -902,6 +965,8 @@ void World::SetInitialWorldSettings()
 						pr|=PROC_TAGRGET_SELF | PROC_ON_RANGED_ATTACK;
 					if(strstr(desc,"successful auto shot attacks"))
 						pr|=PROC_ON_AUTO_SHOT_HIT;
+					if(strstr(desc,"after getting a critical effect from your"))
+						pr=PROC_ON_SPELL_CRIT_HIT;
 //					if(strstr(desc,"Your critical strikes from Fire damage"))
 //						pr|=PROC_ON_SPELL_CRIT_HIT;
 				}//end "if procspellaura"
@@ -924,6 +989,13 @@ void World::SetInitialWorldSettings()
 			}//end "if aura"
 		}//end "for each effect"
 		sp->procFlags=pr;
+
+		if (strstr(desc, "Must remain seated"))
+		{
+			sp->RecoveryTime = 1000;
+			sp->CategoryRecoveryTime = 1000;
+		}
+
 		//////////////////////////////////////////////////////////////////////////////////////////////////////
 		// procintervals
 		//////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -941,7 +1013,7 @@ void World::SetInitialWorldSettings()
 			sp->proc_interval = 3000; //few seconds
 		}
 		//mage ignite talent should proc only on some chances
-		if(strstr(nametext, "Ignite") && sp->Id>=11119 && sp->Id<=12848 && sp->EffectApplyAuraName[0]==4)
+		else if(strstr(nametext, "Ignite") && sp->Id>=11119 && sp->Id<=12848 && sp->EffectApplyAuraName[0]==4)
 		{
 			//check if we can find in the desription
 			char *startofid=strstr(desc, "an additional ");
@@ -956,17 +1028,17 @@ void World::SetInitialWorldSettings()
 			sp->procFlags = PROC_ON_SPELL_CRIT_HIT; //add procflag here since this was not processed with the others !
 		}
 		// Winter's Chill handled by frost school
-		if(strstr(nametext, "Winter's Chill"))
+		else if(strstr(nametext, "Winter's Chill"))
 		{
 			sp->School = 4;
 		}
 		// Blackout handled by Shadow school
-		if(strstr(nametext, "Blackout"))
+		else if(strstr(nametext, "Blackout"))
 		{
 			sp->School = 5;
 		}
 		// Shadow Weaving
-		if(strstr(nametext, "Shadow Weaving"))
+		else if(strstr(nametext, "Shadow Weaving"))
 		{
 			sp->School = 5;
 			sp->EffectApplyAuraName[0] = 42;
@@ -974,7 +1046,7 @@ void World::SetInitialWorldSettings()
 			sp->procFlags = PROC_ON_CAST_SPECIFIC_SPELL;
 		}
 		//Improved Aspect of the Hawk
-		if(strstr(nametext, "Improved Aspect of the Hawk"))
+		else if(strstr(nametext, "Improved Aspect of the Hawk"))
 			sp->EffectSpellGroupRelation[1] = 0x100000;
 		//more triggered spell ids are wrong. I think blizz is trying to outsmart us :S
 		else if( strstr(nametext, "Nature's Guardian"))
@@ -993,6 +1065,35 @@ void World::SetInitialWorldSettings()
 				sp->EffectTriggerSpell[0]=atoi(startofid);
 			}
 		}
+		else if(strstr(nametext, "Holy Shock"))
+		{
+			//check if we can find in the desription
+			char *startofid=strstr(desc, "causing $");
+			if(startofid)
+			{
+				startofid += strlen("causing $");
+				sp->EffectTriggerSpell[0]=atoi(startofid);
+			}
+			//check if we can find in the desription
+			startofid=strstr(desc, " or $");
+			if(startofid)
+			{
+				startofid += strlen(" or $");
+				sp->EffectTriggerSpell[1]=atoi(startofid);
+			}
+		}
+		else if(strstr(nametext, "Touch of Weakness"))
+		{
+			//check if we can find in the desription
+			char *startofid=strstr(desc, "cause $");
+			if(startofid)
+			{
+				startofid += strlen("cause $");
+				sp->EffectTriggerSpell[0]=atoi(startofid);
+				sp->EffectTriggerSpell[1]=sp->EffectTriggerSpell[0]; //later versions of this spell changed to eff[1] the aura
+				sp->procFlags = uint32(PROC_ON_MELEE_ATTACK_VICTIM | PROC_TAGRGET_SELF);
+			}
+		}
 		//some procs trigger at intervals
 		else if(strstr(nametext, "Water Shield"))
 		{
@@ -1009,12 +1110,29 @@ void World::SetInitialWorldSettings()
 			sp->proc_interval = 10000; //10 seconds
 		else if(strstr(nametext, "Aviana's Purpose"))
 			sp->proc_interval = 10000; //10 seconds
+//		else if(strstr(nametext, "Illumination"))
+//			sp->EffectTriggerSpell[0]=20272;
 		//sp->dummy=result;
 /*		//if there is a proc spell and has 0 as charges then it's probably going to triger infinite times. Better not save these
 		if(sp->procCharges==0)
 			sp->procCharges=-1;*/
 		if(sp->proc_interval!=0)
 			sp->procFlags |= PROC_REMOVEONUSE;
+
+		/* Seal of Command - Proc Chance */
+		if(sp->NameHash == 0xC5C30B39)
+			sp->procChance = 25;
+		
+		/* Seal of Jusice - Proc Chance */
+		if(sp->NameHash == 0xCC6D4182)
+			sp->procChance = 25;
+
+		/* Decapitate */
+		if(sp->NameHash == 0xB6C3243C)
+			sp->procChance = 30;
+//junk code to get me has :P 
+//if(sp->Id==11267 || sp->Id==11289 || sp->Id==6409)
+//	printf("!!!!!!! name %s , id %u , hash %u \n",nametext,sp->Id, namehash);
 	}
 	//this is so lame : shamanistic rage triggers a new spell which borrows it's stats from parent spell :S
 	SpellEntry * parentsp = sSpellStore.LookupEntry(30823);
@@ -1083,24 +1201,121 @@ void World::SetInitialWorldSettings()
 	sp = sSpellStore.LookupEntry(30335);
 	if(sp)
 	{
-		sp->Effect[1] = 6; //aura
+		sp->Effect[1] = 64; //aura
 		sp->EffectTriggerSpell[1] = 30339; //evil , but this is good for us :D
 	}
-
-	//mage talent "Blazing Speed"
-	sp = sSpellStore.LookupEntry(31641);
+	//Warrior:Improved Berserker
+	sp = sSpellStore.LookupEntry(20500);
+	if(sp)
+	   sp->procFlags=PROC_ON_CAST_SPELL;
+	sp = sSpellStore.LookupEntry(20501);
+	if(sp)
+	   sp->procFlags=PROC_ON_CAST_SPELL;
+	//Druid:Intensity
+	sp = sSpellStore.LookupEntry(17106);
+	if(sp)
+	{
+	   sp->EffectApplyAuraName[1] = 42;
+	   sp->procFlags=PROC_ON_CAST_SPELL;
+	}
+	sp = sSpellStore.LookupEntry(17107);
+	if(sp)
+	{
+		sp->EffectApplyAuraName[1] = 42;
+		 sp->procFlags=PROC_ON_CAST_SPELL;
+	}
+	sp = sSpellStore.LookupEntry(17108);
+	if(sp)
+	{
+		sp->EffectApplyAuraName[1] = 42;
+		sp->procFlags=PROC_ON_CAST_SPELL;
+	}
+    //Improved Sprint
+	sp = sSpellStore.LookupEntry(13743);
+	if(sp)
+	{
+		sp->EffectApplyAuraName[0] = 42;
+		sp->procFlags=PROC_ON_CAST_SPELL;
+		sp->procChance = 50;
+	}
+	sp = sSpellStore.LookupEntry(13875);
+	if(sp)
+	{
+		sp->EffectApplyAuraName[0] = 42;
+		sp->procFlags=PROC_ON_CAST_SPELL;
+	}
+	//warlock: Shadow Mastery
+	for (uint32 i=0;i<5;i++)
+	{
+		sp  = sSpellStore.LookupEntry(18271+i);
+		if (sp)
+		{
+			sp->EffectSpellGroupRelation[0]=33562624;
+			sp->EffectSpellGroupRelation[1]=8421376;
+		}
+	}
+	//mage: Arcane Power
+	sp  = sSpellStore.LookupEntry(12042);
+	if (sp)
+	{
+		sp->EffectSpellGroupRelation[0]=5775504;
+		sp->EffectSpellGroupRelation[1]=10518528;
+	}
+	//mage: Fire Power
+	sp  = sSpellStore.LookupEntry(11124);
+	if (sp)
+	{
+		sp->EffectSpellGroupRelation[0]=868;
+		sp->EffectSpellGroupRelation[1]=868;
+	}
+	sp  = sSpellStore.LookupEntry(12398);
+	if (sp)
+	{
+		sp->EffectSpellGroupRelation[0]=868;
+		sp->EffectSpellGroupRelation[1]=868;
+	}
+	sp  = sSpellStore.LookupEntry(12399);
+	if (sp)
+	{
+		sp->EffectSpellGroupRelation[0]=868;
+		sp->EffectSpellGroupRelation[1]=868;
+	}
+	sp  = sSpellStore.LookupEntry(12400);
+	if (sp)
+	{
+		sp->EffectSpellGroupRelation[0]=868;
+		sp->EffectSpellGroupRelation[1]=868;
+	}
+	sp  = sSpellStore.LookupEntry(12378);
+	if (sp)
+	{
+		sp->EffectSpellGroupRelation[0]=868;
+		sp->EffectSpellGroupRelation[1]=868;
+	}
+	////mage: Spell Power
+	//sp = sSpellStore.LookupEntry(35581);
+	//if(sp)	
+	//{
+	//	sp->EffectSpellGroupRelation[0]=5775504;
+	//}
+	//sp = sSpellStore.LookupEntry(35578);
+	//if(sp)	
+	//{
+	//	sp->EffectSpellGroupRelation[0]=5775504;
+	//}
+	//mage: Blazing Speed
+	sp = sSpellStore.LookupEntry(31641); 
 	if(sp)	sp->EffectTriggerSpell[0]=31643;
 	sp = sSpellStore.LookupEntry(31642);
 	if(sp)	sp->EffectTriggerSpell[0]=31643;
 
-	//mage talent frostbyte. we make it to be dummy
+	//mage talent "frostbyte". we make it to be dummy
 	sp = sSpellStore.LookupEntry(11071);
 	if(sp)	sp->EffectApplyAuraName[0]=4;
 	sp = sSpellStore.LookupEntry(12496);
 	if(sp)	sp->EffectApplyAuraName[0]=4;
 	sp = sSpellStore.LookupEntry(12497);
 	if(sp)	sp->EffectApplyAuraName[0]=4;
-
 	//rogue-shiv -> add 1 combo point
 	sp = sSpellStore.LookupEntry(5938);
 	if(sp)	sp->Effect[1]=80;
@@ -1112,7 +1327,7 @@ void World::SetInitialWorldSettings()
 		sp->Effect[0] = 6; //aura
 		sp->EffectApplyAuraName[0] = 42;
 		sp->EffectTriggerSpell[0] = 30294;
-		sp->procFlags=PROC_ON_CAST_SPELL|PROC_TAGRGET_SELF;
+		sp->procFlags=uint32(PROC_ON_CAST_SPELL|PROC_TAGRGET_SELF);
 	}
 	sp = sSpellStore.LookupEntry(30295);
 	if(sp)
@@ -1120,7 +1335,7 @@ void World::SetInitialWorldSettings()
 		sp->Effect[0] = 6; //aura
 		sp->EffectApplyAuraName[0] = 42;
 		sp->EffectTriggerSpell[0] = 30294;
-		sp->procFlags=PROC_ON_CAST_SPELL|PROC_TAGRGET_SELF;
+		sp->procFlags=uint32(PROC_ON_CAST_SPELL|PROC_TAGRGET_SELF);
 	}
 	sp = sSpellStore.LookupEntry(30296);
 	if(sp)
@@ -1128,7 +1343,7 @@ void World::SetInitialWorldSettings()
 		sp->Effect[0] = 6; //aura
 		sp->EffectApplyAuraName[0] = 42;
 		sp->EffectTriggerSpell[0] = 30294;
-		sp->procFlags=PROC_ON_CAST_SPELL|PROC_TAGRGET_SELF;
+		sp->procFlags=uint32(PROC_ON_CAST_SPELL|PROC_TAGRGET_SELF);
 	}
 
 	//warlock - Pyroclasm
@@ -1240,7 +1455,146 @@ void World::SetInitialWorldSettings()
 		sp->procFlags = PROC_ON_MELEE_ATTACK_VICTIM | PROC_REMOVEONUSE;
 		sp->AuraInterruptFlags = 0; //we remove it on proc or timeout
 	}
-
+	//wrath of air totem targets sorounding creatures instead of us
+	sp = sSpellStore.LookupEntry(2895);
+	if(sp)
+	{
+		sp->EffectImplicitTargetA[0]=1;
+		sp->EffectImplicitTargetA[1]=1;
+		sp->EffectImplicitTargetA[2]=0;
+		sp->EffectImplicitTargetB[0]=0;
+		sp->EffectImplicitTargetB[1]=0;
+		sp->EffectImplicitTargetB[2]=0;
+	}
+	//Relentless Strikes
+	sp = sSpellStore.LookupEntry(14179);
+	if(sp)
+	{
+		sp->EffectApplyAuraName[0]=42;//proc spell
+		sp->procFlags = PROC_ON_CAST_SPELL;
+		sp->EffectBasePoints[1] = 20; //client showes 20% chance but whe do not have it ? :O
+	}
+	//priest - surge of light
+	sp = sSpellStore.LookupEntry(33150);
+	if(sp)
+		sp->procFlags = uint32(PROC_ON_SPELL_CRIT_HIT_VICTIM | PROC_TAGRGET_SELF);
+	sp = sSpellStore.LookupEntry(33154);
+	if(sp)
+		sp->procFlags = uint32(PROC_ON_SPELL_CRIT_HIT_VICTIM | PROC_TAGRGET_SELF);
+	sp = sSpellStore.LookupEntry(33151);
+	if(sp)
+	{
+		sp->EffectSpellGroupRelation[0]=128;
+		sp->EffectSpellGroupRelation[1]=128;
+		sp->EffectSpellGroupRelation[2]=128;
+		sp->AuraInterruptFlags = AURA_INTERRUPT_ON_CAST_SPELL;
+	}
+	//Seal of Justice -lowered proc chance (experimental values !)
+	sp = sSpellStore.LookupEntry(20164);
+	if(sp)
+		sp->procChance = 20;
+	sp = sSpellStore.LookupEntry(31895);
+	if(sp)
+		sp->procChance = 20;
+	//make Berserking a simple spell 
+	sp = sSpellStore.LookupEntry(20554);
+	if(sp)
+	{
+		sp->Effect[0] = SPELL_EFFECT_TRIGGER_SPELL;
+		sp->EffectTriggerSpell[0] = 26635;
+	}
+	sp = sSpellStore.LookupEntry(26296);
+	if(sp)
+	{
+		sp->Effect[0] = SPELL_EFFECT_TRIGGER_SPELL;
+		sp->EffectTriggerSpell[0] = 26635;
+	}
+	sp = sSpellStore.LookupEntry(26297);
+	if(sp)
+	{
+		sp->Effect[0] = SPELL_EFFECT_TRIGGER_SPELL;
+		sp->EffectTriggerSpell[0] = 26635;
+	}
+	//rogue - intiative
+	sp = sSpellStore.LookupEntry(13976);
+	if(sp)
+	{
+		sp->EffectApplyAuraName[0] = 42;
+		sp->procFlags=uint32(PROC_ON_CAST_SPELL|PROC_TAGRGET_SELF);
+	}
+	sp = sSpellStore.LookupEntry(13979);
+	if(sp)
+	{
+		sp->EffectApplyAuraName[0] = 42;
+		sp->procFlags=uint32(PROC_ON_CAST_SPELL|PROC_TAGRGET_SELF);
+	}
+	sp = sSpellStore.LookupEntry(13980);
+	if(sp)
+	{
+		sp->EffectApplyAuraName[0] = 42;
+		sp->procFlags=uint32(PROC_ON_CAST_SPELL|PROC_TAGRGET_SELF);
+	}
+	//winfury weapon changes. Start to hate these day by day
+	EnchantEntry * Enchantment = sEnchantStore.LookupEntry(283);
+	if(Enchantment)
+	{
+		Enchantment->spell[0] = 33757; //this is actually good
+		sp = sSpellStore.LookupEntry(33757);
+		if(sp)
+		{
+			sp->EffectApplyAuraName[0] = 42; //who needs dummys anyway ?
+			sp->procFlags = PROC_ON_MELEE_ATTACK; //we do not need proc on spell ;)
+			sp->EffectTriggerSpell[0] = 8232; //for the logs and rest
+		}
+	}
+	Enchantment = sEnchantStore.LookupEntry(284);
+	if(Enchantment)
+	{
+		Enchantment->spell[0] = 33756; 
+		sp = sSpellStore.LookupEntry(33756);
+		if(sp)
+		{
+			sp->EffectApplyAuraName[0] = 42; //who needs dummys anyway ?
+			sp->procFlags = PROC_ON_MELEE_ATTACK; //we do not need proc on spell ;)
+			sp->EffectTriggerSpell[0] = 8235; //for the logs and rest
+		}
+	}
+	Enchantment = sEnchantStore.LookupEntry(525);
+	if(Enchantment)
+	{
+		Enchantment->spell[0] = 33755; 
+		sp = sSpellStore.LookupEntry(33755);
+		if(sp)
+		{
+			sp->EffectApplyAuraName[0] = 42; //who needs dummys anyway ?
+			sp->procFlags = PROC_ON_MELEE_ATTACK; //we do not need proc on spell ;)
+			sp->EffectTriggerSpell[0] = 10486; //for the logs and rest
+		}
+	}
+	Enchantment = sEnchantStore.LookupEntry(1669);
+	if(Enchantment)
+	{
+		Enchantment->spell[0] = 33754; 
+		sp = sSpellStore.LookupEntry(33754);
+		if(sp)
+		{
+			sp->EffectApplyAuraName[0] = 42; //who needs dummys anyway ?
+			sp->procFlags = PROC_ON_MELEE_ATTACK; //we do not need proc on spell ;)
+			sp->EffectTriggerSpell[0] = 16362; //for the logs and rest
+		}
+	}
+	Enchantment = sEnchantStore.LookupEntry(2636);
+	if(Enchantment)
+	{
+		Enchantment->spell[0] = 33727; 
+		sp = sSpellStore.LookupEntry(33727);
+		if(sp)
+		{
+			sp->EffectApplyAuraName[0] = 42; //who needs dummys anyway ?
+			sp->procFlags = PROC_ON_MELEE_ATTACK; //we do not need proc on spell ;)
+			sp->EffectTriggerSpell[0] = 25505; //for the logs and rest
+		}
+	}
 	//for test only
 	sp = sSpellStore.LookupEntry(16498);
 	if(sp)
@@ -1264,19 +1618,22 @@ void World::SetInitialWorldSettings()
 	sSpellStore.LookupEntry(16972)->RequiredShapeShift = mm;
 	sSpellStore.LookupEntry(16974)->RequiredShapeShift = mm;
 	sSpellStore.LookupEntry(16975)->RequiredShapeShift = mm;
-	
-	sLog.outString( "Creating initial battlegrounds..." );
-	sLog.outString("");
-	sBattlegroundMgr.CreateInitialBattlegrounds();
+	sSpellStore.LookupEntry(20134)->procChance = 50;
 
-	sLog.outString( "Starting Transport System...");
+	/* aspect of the pack - change to AA */
+	sSpellStore.LookupEntry(13159)->Effect[0] = SPELL_EFFECT_APPLY_AREA_AURA;
+	sSpellStore.LookupEntry(13159)->Effect[1] = SPELL_EFFECT_APPLY_AREA_AURA;
+	
+	/* shadowstep - change proc flags */
+	sSpellStore.LookupEntry(36563)->procFlags = 0;
+
+	Log.Notice("World","Starting Transport System...");
 	objmgr.LoadTransporters();
 
 	// start mail system
 	MailSystem::getSingleton().StartMailSystem();
 
-	sLog.outString("");
-	sLog.outString("  Starting Auction System...");
+	Log.Notice("World", "Starting Auction System...");
 	new AuctionMgr;
 	sAuctionMgr.LoadAuctionHouses();
 
@@ -1296,7 +1653,7 @@ void World::SetInitialWorldSettings()
 	launch_thread(new WorldRunnable);
 	if(Config.MainConfig.GetBoolDefault("Startup", "BackgroundLootLoading", true))
 	{
-		sLog.outString("Backgrounding loot loading...");
+		Log.Notice("World", "Backgrounding loot loading...");
 
 		// loot background loading in a lower priority thread.
 		launch_thread(new BasicTaskExecutor(new CallbackP0<LootMgr>(LootMgr::getSingletonPtr(), &LootMgr::LoadLoot), 
@@ -1304,9 +1661,12 @@ void World::SetInitialWorldSettings()
 	}
 	else
 	{
-		sLog.outString("Loading loot in foreground...");
+		Log.Notice("World", "Loading loot in foreground...");
 		lootmgr.LoadLoot();
 	}
+
+	Log.Notice("BattlegroundManager", "Starting...");
+	new CBattlegroundManager;
 }
 
 
@@ -1339,6 +1699,22 @@ void World::SendGlobalMessage(WorldPacket *packet, WorldSession *self)
 
 	m_sessionlock.ReleaseReadLock();
 }
+void World::SendFactionMessage(WorldPacket *packet, uint8 teamId)
+{
+	m_sessionlock.AcquireReadLock();
+	SessionMap::iterator itr;
+	Player * plr;
+	for(itr = m_sessions.begin(); itr != m_sessions.end(); itr++)
+	{
+		plr = itr->second->GetPlayer();
+		if(!plr || !plr->IsInWorld())
+			continue;
+
+		if(plr->GetTeam() == teamId)
+			itr->second->SendPacket(packet);
+	}
+	m_sessionlock.ReleaseReadLock();
+}
 
 void World::SendZoneMessage(WorldPacket *packet, uint32 zoneid, WorldSession *self)
 {
@@ -1361,9 +1737,9 @@ void World::SendZoneMessage(WorldPacket *packet, uint32 zoneid, WorldSession *se
 
 void World::SendWorldText(const char* text, WorldSession *self)
 {
-	WorldPacket data;
+    uint32 textLen = strlen((char*)text) + 1;
 
-	uint32 textLen = strlen((char*)text) + 1;
+    WorldPacket data(textLen + 40);
 
 	data.Initialize(SMSG_MESSAGECHAT);
 	data << uint8(CHAT_MSG_SYSTEM);
@@ -1384,7 +1760,7 @@ void World::SendWorldText(const char* text, WorldSession *self)
 
 void World::SendWorldWideScreenText(const char *text, WorldSession *self)
 {
-	WorldPacket data;
+	WorldPacket data(256);
 	data.Initialize(SMSG_AREA_TRIGGER_MESSAGE);
 	data << (uint32)0 << text << (uint8)0x00;
 	SendGlobalMessage(&data, self);
@@ -1586,7 +1962,7 @@ void World::SaveAllPlayers()
 
 	sLog.outString("Saving all players to database...");
 	uint32 count = 0;
-	HM_NAMESPACE::hash_map<uint32, Player*>::const_iterator itr;
+	PlayerStorageMap::const_iterator itr;
 		// Servers started and obviously runing. lets save all players.
 	uint32 mt;
 	objmgr._playerslock.AcquireReadLock();   
@@ -1658,7 +2034,6 @@ void World::ShutdownClasses()
 	sMailSystem.ShutdownMailSystem();
 	delete MailSystem::getSingletonPtr();
 	delete WorldCreator::getSingletonPtr();
-	delete ScriptMgr::getSingletonPtr();
 }
 
 void World::EventDeleteBattleground(Battleground * BG)
@@ -1673,7 +2048,7 @@ void World::GetStats(uint32 * GMCount, float * AverageLatency)
 	int gm = 0;
 	int count = 0;
 	int avg = 0;
-	HM_NAMESPACE::hash_map<uint32, Player*>::const_iterator itr;
+	PlayerStorageMap::const_iterator itr;
 	objmgr._playerslock.AcquireReadLock();
 	for (itr = objmgr._players.begin(); itr != objmgr._players.end(); itr++)
 	{
@@ -1744,7 +2119,10 @@ void TaskList::spawn()
 	else
 		threadcount = 1;
 
-	sLog.outString("\n  Beginning %s server startup with %u threads.\n", (threadcount == 1) ? "progressive" : "parallel", threadcount);
+	Log.Line();
+	Log.Notice("World", "Beginning %s server startup with %u threads.", (threadcount == 1) ? "progressive" : "parallel", threadcount);
+	Log.Line();
+
 	for(uint32 x = 0; x < threadcount; ++x)
 		launch_thread(new TaskExecutor(this));
 }
@@ -1813,7 +2191,7 @@ void World::DeleteObject(Object * obj)
 void World::Rehash(bool load)
 {
 	if(load)
-		Config.MainConfig.SetSource("antrix.conf", true);
+		Config.MainConfig.SetSource("ascent.conf", true);
 
 	if(!ChannelMgr::getSingletonPtr())
 		new ChannelMgr;
@@ -1837,7 +2215,13 @@ void World::Rehash(bool load)
 	setRate(RATE_POWER1,Config.MainConfig.GetFloatDefault("Rates", "Power1",1));
 	setRate(RATE_POWER2,Config.MainConfig.GetFloatDefault("Rates", "Power2",1));
 	setRate(RATE_POWER3,Config.MainConfig.GetFloatDefault("Rates", "Power4",1));
-	setRate(RATE_DROP,Config.MainConfig.GetFloatDefault("Rates", "Drop",1));
+	setRate(RATE_DROP0,Config.MainConfig.GetFloatDefault("Rates", "DropGrey",1));
+  setRate(RATE_DROP1,Config.MainConfig.GetFloatDefault("Rates", "DropWhite",1));
+  setRate(RATE_DROP2,Config.MainConfig.GetFloatDefault("Rates", "DropGreen",1));
+  setRate(RATE_DROP3,Config.MainConfig.GetFloatDefault("Rates", "DropBlue",1));
+  setRate(RATE_DROP4,Config.MainConfig.GetFloatDefault("Rates", "DropPurple",1));
+  setRate(RATE_DROP5,Config.MainConfig.GetFloatDefault("Rates", "DropOrange",1));
+  setRate(RATE_DROP6,Config.MainConfig.GetFloatDefault("Rates", "DropArtifact",1));
 	setRate(RATE_XP,Config.MainConfig.GetFloatDefault("Rates", "XP",1));
 	setRate(RATE_RESTXP,Config.MainConfig.GetFloatDefault("Rates", "RestXP", 1));
 	setRate(RATE_QUESTXP,Config.MainConfig.GetFloatDefault("Rates", "QuestXP", 1));
@@ -1846,16 +2230,22 @@ void World::Rehash(bool load)
 	setRate(RATE_QUESTREPUTATION, Config.MainConfig.GetFloatDefault("Rates", "QuestReputation", 1.0f));
 	setRate(RATE_KILLREPUTATION, Config.MainConfig.GetFloatDefault("Rates", "KillReputation", 1.0f));
 	setRate(RATE_HONOR, Config.MainConfig.GetFloatDefault("Rates", "Honor", 1.0f));
+	setRate(RATE_SKILLCHANCE, Config.MainConfig.GetFloatDefault("Rates", "SkillChance", 1.0f));
+	setRate(RATE_SKILLRATE, Config.MainConfig.GetFloatDefault("Rates", "SkillRate", 1.0f));
 	setIntRate(INTRATE_COMPRESSION, Config.MainConfig.GetIntDefault("Rates", "Compression", 1));
 	setIntRate(INTRATE_PVPTIMER, Config.MainConfig.GetIntDefault("Rates", "PvPTimer", 300000));
 	SetPlayerLimit(Config.MainConfig.GetIntDefault("Server", "PlayerLimit", 1000));
-	SetMotd(Config.MainConfig.GetStringDefault("Server", "Motd", "Antrix Default MOTD").c_str());
+	SetMotd(Config.MainConfig.GetStringDefault("Server", "Motd", "Ascent Default MOTD").c_str());
 	SetUpdateDistance( Config.MainConfig.GetFloatDefault("Server", "PlrUpdateDistance", 79.1f) );
 	mQueueUpdateInterval = Config.MainConfig.GetIntDefault("Server", "QueueUpdateInterval", 5000);
 	SetKickAFKPlayerTime(Config.MainConfig.GetIntDefault("Server", "KickAFKPlayers", 0));
 	sLog.SetScreenLoggingLevel(Config.MainConfig.GetIntDefault("LogLevel", "Screen", 1));
 	sLog.SetFileLoggingLevel(Config.MainConfig.GetIntDefault("LogLevel", "File", -1));
 	gm_skip_attunement = Config.MainConfig.GetBoolDefault("Server", "SkipAttunementsForGM", true);
+#ifndef CLUSTERING
+	SocketRecvBufSize = Config.MainConfig.GetIntDefault("WorldSocket", "RecvBufSize", WORLDSOCKET_RECVBUF_SIZE);
+	SocketSendBufSize = Config.MainConfig.GetIntDefault("WorldSocket", "SendBufSize", WORLDSOCKET_SENDBUF_SIZE);
+#endif
 
 	bool log_enabled = Config.MainConfig.GetBoolDefault("Log", "Cheaters", false);
 	if(Anticheat_Log->IsOpen())
@@ -1919,6 +2309,15 @@ void World::Rehash(bool load)
 	flood_lines = Config.MainConfig.GetIntDefault("FloodProtection", "Lines", 0);
 	flood_seconds = Config.MainConfig.GetIntDefault("FloodProtection", "Seconds", 0);
 	flood_message = Config.MainConfig.GetBoolDefault("FloodProtection", "SendMessage", false);
+	show_gm_in_who_list = Config.MainConfig.GetBoolDefault("Server", "ShowGMInWhoList", true);
 	if(!flood_lines || !flood_seconds)
 		flood_lines = flood_seconds = 0;
+
+	map_unload_time=Config.MainConfig.GetIntDefault("Server", "MapUnloadTime", 0);
+
+	antihack_teleport = Config.MainConfig.GetBoolDefault("AntiHack", "Teleport", true);
+	antihack_speed = Config.MainConfig.GetBoolDefault("AntiHack", "Speed", true);
+	antihack_falldmg = Config.MainConfig.GetBoolDefault("AntiHack", "FallDamage", true);
+	antihack_flight = Config.MainConfig.GetBoolDefault("AntiHack", "Flight", true);
+	no_antihack_on_gm = Config.MainConfig.GetBoolDefault("AntiHack", "DisableOnGM", false);
 }

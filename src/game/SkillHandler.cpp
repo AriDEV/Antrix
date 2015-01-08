@@ -1,163 +1,28 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Packet Handler File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "StdAfx.h"
 
-//////////////////////////////////////////////////////////////
-/// This function handles CMSG_SKILL_LEVELUP
-//////////////////////////////////////////////////////////////
-
-/*void WorldSession::HandleSkillLevelUpOpcode( WorldPacket & recv_data )
-{
-WorldPacket data;
-uint32 slot, skill_id, amount, current_points, current_skill, points;
-recv_data >> slot >> skill_id >> amount;
-current_points = GetPlayer( )->GetUInt32Value( PLAYER_SKILL_INFO_1_1+slot+1 );
-current_skill = GetPlayer( )->GetUInt32Value( PLAYER_SKILL_INFO_1_1+slot );
-points = GetPlayer( )->GetUInt32Value( PLAYER_CHARACTER_POINTS2 );
-GetPlayer( )->SetUInt32Value( PLAYER_SKILL_INFO_1_1+slot , ( 0x000001a1 ));
-GetPlayer( )->SetUInt32Value( PLAYER_SKILL_INFO_1_1+slot+1 , ( (current_points & 0xffff) + (amount << 16) ) );
-GetPlayer( )->SetUInt32Value( PLAYER_CHARACTER_POINTS2, points-amount );
-GetPlayer( )->UpdateObject( );
-}*/
-/*
-struct TalentEntry
-{
-	uint32 Id;
-	uint32 treeId;
-	uint32 deeplvl;
-	uint32 reqId;
-	uint32 reqflags;
-	uint32 reqpoints;
-	uint32 rankId[5];
-	uint32 notcast;
-};
-
-TalentEntry *getFirstTalentinfoFromQuery(std::stringstream *ss)
-{
-	QueryResult *result = sDatabase.Query( ss->str().c_str() );
-	if(!result) return NULL;
-
-	Field *fields = result->Fetch();
-
-	TalentEntry *tt = new TalentEntry;
-	tt->Id = fields[0].GetUInt32();
-	tt->treeId = fields[1].GetUInt32();
-	tt->deeplvl = fields[2].GetUInt32();
-	tt->reqId = fields[3].GetUInt32();
-		
-	for(int i=0;i<5;i++)
-		tt->rankId[i] = fields[i+4].GetUInt32();
-
-	tt->reqflags = fields[9].GetUInt32(); 
-	tt->reqpoints = fields[10].GetUInt32();
-	tt->notcast = fields[11].GetUInt32();
-	
-	return tt;
-}*/
-
 void WorldSession::HandleLearnTalentOpcode( WorldPacket & recv_data )
 {
 	if(!_player->IsInWorld()) return;
-   /* WorldPacket data;
-	uint32 talent_id, requested_rank;
-
-	recv_data >> talent_id >> requested_rank; 
-
-	std::stringstream ss;
-	ss << "SELECT * FROM talents WHERE Id=" << talent_id;
-
-	TalentEntry *talentInfo = getFirstTalentinfoFromQuery(&ss);
-	if(!talentInfo) return;
-
-	uint32 CurTalentPoints =  GetPlayer()->GetUInt32Value(PLAYER_CHARACTER_POINTS1); 
-	if(CurTalentPoints == 0) return; 
-
-
-	uint32 spellid = talentInfo->rankId[requested_rank];
-	if( spellid == 0 || requested_rank > 4) 
-	{ 
-		sLog.outDebug("Talent: %d Rank: %d = 0", talent_id, requested_rank); 
-	}
-	else if(GetPlayer()->getTalentpointsByTreeId(talentInfo->treeId) < talentInfo->deeplvl*5)
-	{
-		sLog.outDebug("Not enought talent points in tree: %d to learn that talent",talentInfo->treeId); 
-	}
-	else 
-	{ 
-		if(talentInfo->reqflags)
-		{
-			std::stringstream ss1;
-			ss1 << "SELECT * FROM talents where Id != " << talentInfo->Id << " AND treeId = " << talentInfo->treeId << " AND deeplvl < " << talentInfo->deeplvl << " AND reqId = " << talentInfo->reqId << " ORDER BY deeplvl DESC LIMIT 1 ";
-			TalentEntry *tmptinfo = getFirstTalentinfoFromQuery(&ss1);
-			if(tmptinfo)
-			{
-				uint32 rankspell = tmptinfo->rankId[talentInfo->reqpoints];
-				if(!(GetPlayer( )->HasSpell(rankspell)))
-				{
-					sLog.outDebug("Player requires talent: %d to learn this talent",rankspell);
-					return;
-				}	 
-			}
-		}
-	   
-
-		if(!(GetPlayer( )->HasSpell(spellid)))
-		{
-			//Unlearn old Ranks
-			if(requested_rank > 0)
-			{
-				uint32 oldrankspell = talentInfo->rankId[requested_rank-1];
-				if(GetPlayer()->HasSpell(oldrankspell))
-				{
-					GetPlayer()->removeSpell(oldrankspell);
-					GetPlayer()->RemoveTalent(oldrankspell);
-		
-					// Already handled in removespell.
-					//data.Initialize(SMSG_REMOVED_SPELL);
-					//data << oldrankspell; 
-					//SendPacket( &data );
-					sLog.outDetail("Removed Old Rank TalentID: %d", oldrankspell);
-				}
-			}
-			
-			//Send data if all OK 
-			sLog.outDetail("TalentID: %d Rank: %d Spell: %d", talent_id, requested_rank, spellid); 
-		
-			GetPlayer()->addSpell(spellid);
-			GetPlayer()->AddTalent(spellid);
-			
-			if(!talentInfo->notcast)
-			{
-				GetPlayer()->GetSession()->SendPacket(&data);
-				SpellEntry *spellInfo = sSpellStore.LookupEntry(spellid);
-				if(!spellInfo) return;
-				Spell *spell = new Spell(GetPlayer( ), spellInfo,false,NULL);
-				WPAssert(spell);
-
-				SpellCastTargets targets;
-				targets.m_unitTarget = GetPlayer( )->GetGUID();
-				spell->prepare(&targets);
-			}
-			 //Update Talent Points 
-			GetPlayer()->SetUInt32Value(PLAYER_CHARACTER_POINTS1, CurTalentPoints - 1); 
-			GetPlayer()->SetBaseUInt32Value(PLAYER_CHARACTER_POINTS1, CurTalentPoints - 1); //saving
-			GetPlayer()->IncrTalentpointsByTreeId(talentInfo->treeId);
-		}
-	} */
-	 
-	WorldPacket data;
+ 	 
 	uint32 talent_id, requested_rank;
 	recv_data >> talent_id >> requested_rank;
 
@@ -324,13 +189,14 @@ void WorldSession::HandleUnlearnTalents( WorldPacket & recv_data )
 		//SendPacket( &data );
 	}
 	talentproto->clear();
-*/	
+*/
 }
 
 void WorldSession::HandleUnlearnSkillOpcode(WorldPacket& recv_data)
 {
 	if(!_player->IsInWorld()) return;
 	uint32 skill_line;
+	uint32 points_remaining=_player->GetUInt32Value(PLAYER_CHARACTER_POINTS2);
 	recv_data >> skill_line;
 
 	// Cheater detection
@@ -340,5 +206,17 @@ void WorldSession::HandleUnlearnSkillOpcode(WorldPacket& recv_data)
 	_player->RemoveSpellsFromLine(skill_line);
 	
 	// Finally, remove the skill line.
-	_player->RemoveSkillLine(skill_line);
+	_player->_RemoveSkillLine(skill_line);
+
+	//added by Zack : This is probably wrong or already made elsewhere : restore skill learnability
+	if(points_remaining==_player->GetUInt32Value(PLAYER_CHARACTER_POINTS2))
+	{
+		//we unlearned a kill so we enable a new one to be learned
+		skilllineentry *sk=sSkillLineStore.LookupEntry(skill_line);
+		if(!sk)
+			return;
+		if(sk->type==SKILL_TYPE_PROFESSION && points_remaining<2)
+			_player->SetUInt32Value(PLAYER_CHARACTER_POINTS2,points_remaining+1);
+	}
+
 }

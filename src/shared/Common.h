@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -39,6 +44,19 @@ enum MsTimeVariables
 # include <config.h>
 #endif
 
+/* Define this if you're using a big-endian machine */
+#ifndef WIN32
+#ifdef HAVE_DARWIN
+#if BYTE_ORDER == BIG_ENDIAN
+#define USING_BIG_ENDIAN 1
+#include <machine/byte_order.h>
+#define bswap_16(x) NXSwapShort(x)
+#define bswap_32(x) NXSwapInt(x)
+#define bswap_64(x) NXSwapLongLong(x)
+#endif
+#endif
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -54,6 +72,7 @@ enum MsTimeVariables
 #define UNIX_FLAVOUR_LINUX 1
 #define UNIX_FLAVOUR_BSD 2
 #define UNIX_FLAVOUR_OTHER 3
+#define UNIX_FLAVOUR_OSX 4
 
 #if defined( __WIN32__ ) || defined( WIN32 ) || defined( _WIN32 )
 #  define PLATFORM PLATFORM_WIN32
@@ -78,11 +97,34 @@ enum MsTimeVariables
 #endif
 
 #if PLATFORM == PLATFORM_UNIX || PLATFORM == PLATFORM_APPLE
+#ifdef HAVE_DARWIN
+#define PLATFORM_TEXT "MacOSX"
+#define UNIX_FLAVOUR UNIX_FLAVOUR_OSX
+#else
 #ifdef USE_KQUEUE
+#define PLATFORM_TEXT "FreeBSD"
 #define UNIX_FLAVOUR UNIX_FLAVOUR_BSD
 #else
+#define PLATFORM_TEXT "Linux"
 #define UNIX_FLAVOUR UNIX_FLAVOUR_LINUX
 #endif
+#endif
+#endif
+
+#if PLATFORM == PLATFORM_WIN32
+#define PLATFORM_TEXT "Win32"
+#endif
+
+#ifdef _DEBUG
+#define CONFIG "Debug"
+#else
+#define CONFIG "Release"
+#endif
+
+#ifdef USING_BIG_ENDIAN
+#define ARCH "PPC"
+#else
+#define ARCH "X86"
 #endif
 
 #if COMPILER == COMPILER_MICROSOFT
@@ -244,14 +286,18 @@ typedef uint32_t DWORD;
 
 #endif
 
-/* Define this if you're using a big-endian machine (todo: replace with autoconf */
-/*#define USING_BIG_ENDIAN 1*/
-
 /* these can be optimized into assembly */
-inline static void swap16(uint16* p) { *p = (*p >> 8) | (*p << 8); }
-inline static void swap32(uint32* p) { *p = (*p >> 24) | ((*p >> 8) & 0xff00) | ((*p << 8) & 0xff0000) | (*p << 24); }
+#ifdef USING_BIG_ENDIAN
+
+/*inline static void swap16(uint16* p) { *p = ((*p >> 8) & 0xff) | (*p << 8); }
+inline static void swap32(uint32* p) { *p = ((*p >> 24 & 0xff)) | ((*p >> 8) & 0xff00) | ((*p << 8) & 0xff0000) | (*p << 24); }
 inline static void swap64(uint64* p) { *p = ((*p >> 56)) | ((*p >> 40) & 0x000000000000ff00ULL) | ((*p >> 24) & 0x0000000000ff0000ULL) | ((*p >> 8 ) & 0x00000000ff000000ULL) |
-								((*p << 8 ) & 0x000000ff00000000ULL) | ((*p << 24) & 0x0000ff0000000000ULL) | ((*p << 40) & 0x00ff000000000000ULL) | ((*p << 56)); }
+								((*p << 8 ) & 0x000000ff00000000ULL) | ((*p << 24) & 0x0000ff0000000000ULL) | ((*p << 40) & 0x00ff000000000000ULL) | ((*p << 56)); }*/
+
+inline static void swap16(uint16* p) { *p = bswap_16((uint16_t)*p); }
+inline static void swap32(uint32* p) { *p = bswap_32((uint32_t)*p); }
+inline static void swap64(uint64* p) { *p = bswap_64((uint64_t)*p);; }
+
 inline static float swapfloat(float p)
 {
 	union { float asfloat; uint8 asbytes[4]; } u1, u2;
@@ -310,21 +356,34 @@ inline static void swapdouble(double * p)
 	*p = u2.asfloat;
 }
 
-inline static uint16 swap16(uint16 p) { return (p >> 8) | (p << 8); }
-inline static uint32 swap32(uint32 p) { return (p >> 24) | ((p >> 8) & 0xff00) | ((p << 8) & 0xff0000) | (p << 24); }
-inline static uint64 swap64(uint64 p)  { p = ((p >> 56)) | ((p >> 40) & 0x000000000000ff00ULL) | ((p >> 24) & 0x0000000000ff0000ULL) | ((p >> 8 ) & 0x00000000ff000000ULL) |
+/*inline static uint16 swap16(uint16 p) { return ((p >> 8) & 0xff) | (p << 8); }
+inline static uint32 swap32(uint32 p) { return ((p >> 24) & 0xff) | ((p >> 8) & 0xff00) | ((p << 8) & 0xff0000) | (p << 24); }
+inline static uint64 swap64(uint64 p)  { p = (((p >> 56) & 0xff)) | ((p >> 40) & 0x000000000000ff00ULL) | ((p >> 24) & 0x0000000000ff0000ULL) | ((p >> 8 ) & 0x00000000ff000000ULL) |
 								((p << 8 ) & 0x000000ff00000000ULL) | ((p << 24) & 0x0000ff0000000000ULL) | ((p << 40) & 0x00ff000000000000ULL) | ((p << 56)); }
 
-inline static void swap16(int16* p) { *p = (*p >> 8) | (*p << 8); }
-inline static void swap32(int32* p) { *p = (*p >> 24) | ((*p >> 8) & 0xff00) | ((*p << 8) & 0xff0000) | (*p << 24); }
-inline static void swap64(int64* p) { *p = ((*p >> 56)) | ((*p >> 40) & 0x000000000000ff00ULL) | ((*p >> 24) & 0x0000000000ff0000ULL) | ((*p >> 8 ) & 0x00000000ff000000ULL) |
+inline static void swap16(int16* p) { *p = ((*p >> 8) & 0xff) | (*p << 8); }
+inline static void swap32(int32* p) { *p = ((*p >> 24) & 0xff) | ((*p >> 8) & 0xff00) | ((*p << 8) & 0xff0000) | (*p << 24); }
+inline static void swap64(int64* p) { *p = ((*p >> 56) & 0xff) | ((*p >> 40) & 0x000000000000ff00ULL) | ((*p >> 24) & 0x0000000000ff0000ULL) | ((*p >> 8 ) & 0x00000000ff000000ULL) |
 								((*p << 8 ) & 0x000000ff00000000ULL) | ((*p << 24) & 0x0000ff0000000000ULL) | ((*p << 40) & 0x00ff000000000000ULL) | ((*p << 56)); }
 
-inline static int16 swap16(int16 p) { return (p >> 8) | (p << 8); }
-inline static int32 swap32(int32 p) { return (p >> 24) | ((p >> 8) & 0xff00) | ((p << 8) & 0xff0000) | (p << 24); }
-inline static int64 swap64(int64 p)  { p = ((p >> 56)) | ((p >> 40) & 0x000000000000ff00ULL) | ((p >> 24) & 0x0000000000ff0000ULL) | ((p >> 8 ) & 0x00000000ff000000ULL) |
-								((p << 8 ) & 0x000000ff00000000ULL) | ((p << 24) & 0x0000ff0000000000ULL) | ((p << 40) & 0x00ff000000000000ULL) | ((p << 56)); }
+inline static int16 swap16(int16 p) { return ((p >> 8) & 0xff) | (p << 8); }
+inline static int32 swap32(int32 p) { return ((p >> 24) & 0xff) | ((p >> 8) & 0xff00) | ((p << 8) & 0xff0000) | (p << 24); }
+inline static int64 swap64(int64 p)  { return ((((p >> 56) & 0xff)) | ((p >> 40) & 0x000000000000ff00ULL) | ((p >> 24) & 0x0000000000ff0000ULL) | ((p >> 8 ) & 0x00000000ff000000ULL) |
+								((p << 8 ) & 0x000000ff00000000ULL) | ((p << 24) & 0x0000ff0000000000ULL) | ((p << 40) & 0x00ff000000000000ULL) | ((p << 56))); }*/
 
+inline static uint16 swap16(uint16 p) { return bswap_16((uint16_t)p); }
+inline static uint32 swap32(uint32 p) { return bswap_32((uint32_t)p); }
+inline static uint64 swap64(uint64 p)  { return bswap_64((uint64_t)p); }
+
+inline static void swap16(int16* p) { *p = bswap_16((uint16_t)*p); }
+inline static void swap32(int32* p) { *p = bswap_32((uint32_t)*p); }
+inline static void swap64(int64* p) { *p = bswap_64((uint64_t)*p); }
+
+inline static int16 swap16(int16 p) { return bswap_16((uint16_t)p); }
+inline static int32 swap32(int32 p) { return bswap_32((uint32_t)p); }
+inline static int64 swap64(int64 p)  { return bswap_64((uint64_t)p); }
+
+#endif
 /* 
 Scripting system exports/imports
 */
@@ -366,10 +425,17 @@ Scripting system exports/imports
 
 #endif
 
+#ifdef USING_BIG_ENDIAN
+#define GUID_HIPART(x) (*((uint32*)&(x)))
+#define GUID_LOPART(x) (*(((uint32*)&(x))+1))
+#define UINT32_HIPART(x) (*((uint16*)&(x)))
+#define UINT32_LOPART(x) (*(((uint16*)&(x))+1))
+#else
 #define GUID_HIPART(x) (*(((uint32*)&(x))+1))
 #define GUID_LOPART(x) (*((uint32*)&(x)))
 #define UINT32_HIPART(x) (*(((uint16*)&(x))+1))
 #define UINT32_LOPART(x) (*((uint16*)&(x)))
+#endif
 
 #define atol(a) strtoul( a, NULL, 10)
 
@@ -378,7 +444,7 @@ Scripting system exports/imports
 // fix buggy MSVC's for variable scoping to be reliable =S
 #define for if(true) for
 
-#ifdef GNL_BIG_ENDIAN
+#ifdef USING_BIG_ENDIAN
 #  define GNL_LOWER_WORD_BYTE	4
 #else
 #  define GNL_LOWER_WORD_BYTE	0
@@ -393,7 +459,7 @@ static inline int float2int32(const float value)
   union { int asInt[2]; double asDouble; } n;
   n.asDouble = value + 6755399441055744.0;
   
-#if GNL_BIG_ENDIAN
+#if USING_BIG_ENDIAN
   return n.asInt [1];
 #else
   return n.asInt [0];
@@ -406,7 +472,7 @@ static inline int long2int32(const double value)
   union { int asInt[2]; double asDouble; } n;
   n.asDouble = value + 6755399441055744.0;
 
-#if GNL_BIG_ENDIAN
+#if USING_BIG_ENDIAN
   return n.asInt [1];
 #else
   return n.asInt [0];
@@ -512,6 +578,15 @@ struct WayPoint
 
 };
 
-typedef HM_NAMESPACE::hash_map<uint32, WayPoint*> WayPointMap;
+inline void reverse_array(uint8 * pointer, size_t count)
+{
+	uint8 * temp = (uint8*)malloc(count);
+	memcpy(temp, pointer, count);
+	for(size_t x = 0; x < count; ++x)
+		pointer[x] = temp[count-x-1];
+	free(temp);
+}
+
+typedef std::vector<WayPoint*> WayPointMap;
 
 #endif

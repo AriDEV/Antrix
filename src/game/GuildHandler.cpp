@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Guild System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -326,7 +331,7 @@ void WorldSession::HandleGuildPromote(WorldPacket & recv_data)
 		//They Online
 		if(pTarget->GetInstanceID() != _player->GetInstanceID())
 		{
-			sEventMgr.AddEvent(pTarget, &Player::SetGuildRank, (uint32)pTargetRank, 1, 1, 1);
+			sEventMgr.AddEvent(pTarget, &Player::SetGuildRank, (uint32)pTargetRank, 1, 1, 1,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
 		}
 		else
 		{
@@ -957,7 +962,7 @@ void WorldSession::HandleCharterBuy(WorldPacket & recv_data)
     else
     {
         // Meh...
-        WorldPacket data(SMSG_PLAY_OBJECT_SOUND, 100);
+        WorldPacket data(SMSG_PLAY_OBJECT_SOUND, 12);
         data << uint32(0x000019C2);
         data << creature_guid;
         SendPacket(&data);
@@ -977,6 +982,7 @@ void WorldSession::HandleCharterBuy(WorldPacket & recv_data)
         c->SaveToDB();
 
 		data.clear();
+        data.resize(45);
 		BuildItemPushResult(&data, _player->GetGUID(), ITEM_PUSH_TYPE_RECEIVE, 1, ITEM_ENTRY_GUILD_CHARTER, 0);
 		SendPacket(&data);
 

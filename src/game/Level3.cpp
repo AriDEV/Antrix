@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -17,7 +22,8 @@
 //
 
 #include "StdAfx.h"
-#include "../antrix/Master.h"
+#include "ObjectMgr.h"
+#include "../ascent/Master.h"
 
 bool ChatHandler::HandleWeatherCommand(const char* args, WorldSession *m_session)
 {
@@ -26,22 +32,15 @@ bool ChatHandler::HandleWeatherCommand(const char* args, WorldSession *m_session
 	if(!ptype)
 		return false;
 	char *pintensity = strtok(NULL, " ");
-	char *punk = strtok(NULL, " ");
-	char *punk2 = strtok(NULL, " ");
-	if(!pintensity || !punk || !punk2)
+	/*char *punk = strtok(NULL, " ");
+	char *punk2 = strtok(NULL, " ");*/
+	if(!pintensity/* || !punk || !punk2*/)
 		return false;
 
 	uint32 type = atol(ptype);
-	float intensity = (float)atol(args);
-	uint32 sound = atol(punk);
-	uint8 switchTimeFlag = atol(punk2);
+	float intensity = atof(pintensity);
 
-	//	sLog.outString("Recived set weather command. Type: %u, Intensity: %.3f, Unknown: %u", type, intensity, unk);
-	data.Initialize(SMSG_WEATHER);
-	data << (uint32)type;
-	data << (float)intensity;
-	data << (uint32)sound;
-	data << (uint8)switchTimeFlag;
+	BuildWeatherPacket(&data,type,intensity);
 	m_session->GetPlayer()->SendMessageToSet(&data,true);
 	sLog.outDebug("SENT SMSG_WEATHER");
 	return true;
@@ -414,7 +413,6 @@ bool ChatHandler::HandleLearnCommand(const char* args, WorldSession *m_session)
 		
 		return true;
 	}
-
 	uint32 spell = atol((char*)args);
 	
 	Player *plr = getSelectedChar(m_session, true);
@@ -712,7 +710,7 @@ bool ChatHandler::HandleGMTicketGetAllCommand(const char* args, WorldSession *m_
 		return false;
 
 	chn->Say(m_session->GetPlayer(), "GmTicket 2", m_session->GetPlayer());
-	for(std::list<GM_Ticket*>::iterator itr = objmgr.GM_TicketList.begin(); itr != objmgr.GM_TicketList.end(); itr++)
+	for(GmTicketList::iterator itr = objmgr.GM_TicketList.begin(); itr != objmgr.GM_TicketList.end(); itr++)
 	{
 		uint32 cont = 0;
 		uint32 zone = 0;
@@ -741,7 +739,7 @@ bool ChatHandler::HandleGMTicketGetByIdCommand(const char* args, WorldSession *m
 		return false;
 
 
-	std::list<GM_Ticket*>::iterator i;
+	GmTicketList::iterator i;
 	for(i = objmgr.GM_TicketList.begin(); i != objmgr.GM_TicketList.end(); i++)
 	{
 		if(strcmp((*i)->name.c_str(), args) == 0)
@@ -764,7 +762,7 @@ bool ChatHandler::HandleGMTicketDelByIdCommand(const char* args, WorldSession *m
 	if(!*args)
 		return false;
 
-	std::list<GM_Ticket*>::iterator i;
+	GmTicketList::iterator i;
 	int32 guid = -1;
 	for(i = objmgr.GM_TicketList.begin(); i != objmgr.GM_TicketList.end(); i++)
 	{
@@ -832,7 +830,7 @@ bool ChatHandler::HandleAddSkillCommand(const char* args, WorldSession *m_sessio
 	cur = (uint16)atol(pCurrent);
 	max = (uint16)atol(pMax);
 
-	target->AddSkillLine(skillline,cur,max);
+	target->_AddSkillLine(skillline,cur,max);
 
 	snprintf(buf,256,"SkillLine: %u CurrentValue %u Max Value %u Added.",(unsigned int)skillline,(unsigned int)cur,(unsigned int)max);
 	SystemMessage(m_session, buf);
@@ -976,21 +974,14 @@ bool ChatHandler::HandleIncreaseWeaponSkill(const char *args, WorldSession *m_se
 
 	BlueSystemMessage(m_session, "Modifying skill line %d. Advancing %d times.", skill, cnt);
 
-	if(!pr->HasSkillLine(skill))
+	if(!pr->_HasSkillLine(skill))
 	{
 		SystemMessage(m_session, "Does not have skill line, adding.");
-		pr->AddSkillLine(skill, 1, 300);   
+		pr->_AddSkillLine(skill, 1, 300);   
 	} 
 	else 
 	{
-		if(cnt + pr->GetSkillAmt(skill) > pr->GetSkillMax(skill))
-		{
-			cnt = pr->GetSkillMax(skill) - pr->GetSkillAmt(skill);
-		}
-		for(uint32 l=0;l<cnt;l++)
-		{
-			pr->AdvanceSkillLine(skill);
-		}
+		pr->_AdvanceSkillLine(skill,cnt);
 	}	   
 	return true;	
 }
@@ -1217,7 +1208,7 @@ bool ChatHandler::HandleParalyzeCommand(const char* args, WorldSession *m_sessio
 	//Player *plr = getSelectedChar(m_session, true);
 	//if(!plr) return false;
 	Unit *plr = m_session->GetPlayer()->GetMapMgr()->GetUnit(m_session->GetPlayer()->GetSelection());
-	if(!plr)
+	if(!plr || plr->GetTypeId() != TYPEID_PLAYER)
 	{
 		RedSystemMessage(m_session, "Invalid target.");
 		return true;
@@ -1239,7 +1230,7 @@ bool ChatHandler::HandleUnParalyzeCommand(const char* args, WorldSession *m_sess
 	//Player *plr = getSelectedChar(m_session, true);
 	//if(!plr) return false;
 	Unit *plr = m_session->GetPlayer()->GetMapMgr()->GetUnit(m_session->GetPlayer()->GetSelection());
-	if(!plr)
+	if(!plr || plr->GetTypeId() != TYPEID_PLAYER)
 	{
 		RedSystemMessage(m_session, "Invalid target.");
 		return true;
@@ -1880,33 +1871,8 @@ bool ChatHandler::HandleAdvanceAllSkillsCommand(const char* args, WorldSession* 
 	if(!plr)
 		return true;
 
-	uint32 id;
-	uint32 val;
-	uint32 max;
-	// loop the skills
-	for(uint32 i = PLAYER_SKILL_INFO_1_1; i < PLAYER_SKILL_INFO_1_1+3*127; i += 3)
-	{
-		id = (uint16)plr->GetUInt32Value(i);
-		if(id != 0)
-		{
-			val = plr->GetBaseSkillAmt(id);
-			max = plr->GetSkillMax(id);
-			if(val >= max)
-				continue;
 
-			// figure out the amount we have to add
-			uint32 add = amt;
-			if((val + add) > max)
-				add = max - val;
-
-			if(add > 0)
-			{
-				for(uint32 j = 0; j < add; ++j)
-					plr->AdvanceSkillLine(id);
-			}
-		}
-	}
-
+	plr->_AdvanceAllSkills(amt);
 	GreenSystemMessageToPlr(plr, "Advanced all your skill lines by %u points.", amt);
 	return true;
 }
@@ -1968,7 +1934,7 @@ bool ChatHandler::HandleUnlockMovementCommand(const char* args, WorldSession* m_
 
 bool ChatHandler::HandleMassSummonCommand(const char* args, WorldSession* m_session)
 {
-	HM_NAMESPACE::hash_map<uint32, Player*>::const_iterator itr;
+	PlayerStorageMap::const_iterator itr;
 	objmgr._playerslock.AcquireReadLock();
 	Player * summoner = m_session->GetPlayer();
 	Player * plr;
@@ -1977,7 +1943,9 @@ bool ChatHandler::HandleMassSummonCommand(const char* args, WorldSession* m_sess
 		plr = itr->second;
 		if(plr->GetSession() && plr->IsInWorld())
 		{
-			plr->SafeTeleport(summoner->GetMapId(), summoner->GetInstanceID(), summoner->GetPosition());
+			//plr->SafeTeleport(summoner->GetMapId(), summoner->GetInstanceID(), summoner->GetPosition());
+			/* let's do this the blizz way */
+			plr->SummonRequest(summoner->GetGUIDLow(), summoner->GetZoneId(), summoner->GetMapId(), summoner->GetInstanceID(), summoner->GetPosition());
 		}
 	}
 	objmgr._playerslock.ReleaseReadLock();
@@ -2013,16 +1981,23 @@ bool ChatHandler::HandleCastAllCommand(const char* args, WorldSession* m_session
 
 	sGMLog.writefromsession(m_session, "used castall command, spellid %u", spellid);
 
-	HM_NAMESPACE::hash_map<uint32, Player*>::const_iterator itr;
+	PlayerStorageMap::const_iterator itr;
 	objmgr._playerslock.AcquireReadLock();
 	for (itr = objmgr._players.begin(); itr != objmgr._players.end(); itr++)
 	{
 		plr = itr->second;
 		if(plr->GetSession() && plr->IsInWorld())
 		{
-			Spell * sp = new Spell(plr, info, true, 0);
-			SpellCastTargets targets(plr->GetGUID());
-			sp->prepare(&targets);
+			if(plr->GetMapMgr() != m_session->GetPlayer()->GetMapMgr())
+			{
+				sEventMgr.AddEvent(((Unit*)plr), &Unit::EventCastSpell, ((Unit*)plr), info, EVENT_PLAYER_CHECKFORCHEATS, 100, 1,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
+			}
+			else
+			{
+				Spell * sp = new Spell(plr, info, true, 0);
+				SpellCastTargets targets(plr->GetGUID());
+				sp->prepare(&targets);
+			}
 		}
 	}
 	objmgr._playerslock.ReleaseReadLock();
@@ -2198,11 +2173,11 @@ bool ChatHandler::HandleStackCheatCommand(const char* args, WorldSession * m_ses
 
 bool ChatHandler::HandleResetSkillsCommand(const char* args, WorldSession * m_session)
 {
+	skilllineentry * se;
 	Player * plr = getSelectedChar(m_session, true);
 	if(!plr) return true;
 
-	for(uint32 i = PLAYER_SKILL_INFO_1_1; i < PLAYER_CHARACTER_POINTS1; ++i)
-		plr->SetUInt32Value(i, 0);
+	plr->_RemoveAllSkills();
 
 	// Load skills from create info.
 	PlayerCreateInfo * info = objmgr.GetPlayerCreateInfo(plr->getRace(), plr->getClass());
@@ -2210,12 +2185,15 @@ bool ChatHandler::HandleResetSkillsCommand(const char* args, WorldSession * m_se
 
 	for(std::list<CreateInfo_SkillStruct>::iterator ss = info->skills.begin(); ss!=info->skills.end(); ss++)
 	{
-		if(ss->skillid && ss->currentval && ss->maxval)
-			plr->AddSkillLine(ss->skillid, ss->currentval, ss->maxval);		
+		se = sSkillLineStore.LookupEntry(ss->skillid);
+		if(se->type != SKILL_TYPE_LANGUAGE && ss->skillid && ss->currentval && ss->maxval)
+			plr->_AddSkillLine(ss->skillid, ss->currentval, ss->maxval);		
 	}
 	//Chances depend on stats must be in this order!
 	plr->UpdateStats();
 	plr->UpdateChances();
+	plr->_UpdateMaxSkillCounts();
+	plr->_AddLanguages(false);
 	BlueSystemMessage(m_session, "Reset skills to default.");
 	return true;
 }
@@ -2361,21 +2339,61 @@ bool ChatHandler::HandleBanAccountCommand(const char * args, WorldSession * m_se
 
 bool ChatHandler::HandleIPBanCommand(const char * args, WorldSession * m_session)
 {
-	char ip[200];
-	uint32 duration;
-	int c = sscanf(args, "%s %u", ip, (unsigned int*)&duration);
-	if(c != 2)
+	char ip[16] = {0};		// IPv4 address
+	uint32 dLength = 0;		// duration of ban, 0 = permanent
+	char dType = {0};		// duration type, defaults to minutes ( see convTimePeriod() )
+
+	// we require at least one argument, the network address to ban
+	if ( sscanf(args, "%15s %u%c", ip, (unsigned int*)&dLength, &dType) < 1 )
 		return false;
 
-	int o1, o2, o3, o4;
-	if(sscanf(ip, "%u.%u.%u.%u", &o1, &o2, &o3, &o4))
+	uint32 o1, o2, o3, o4;
+	if ( sscanf(ip, "%3u.%3u.%3u.%3u", (unsigned int*)&o1, (unsigned int*)&o2, (unsigned int*)&o3, (unsigned int*)&o4) != 4
+			|| o1 > 255 || o2 > 255 || o3 > 255 || o4 > 255)
 	{
-		RedSystemMessage(m_session, "Invalid IP input.");
-		return true;
+		RedSystemMessage(m_session, "Invalid IPv4 address [%s]", ip);
+		return true;	// error in syntax, but we wont remind client of command usage
 	}
 
-	SystemMessage(m_session, "SQL Executed: INSERT INTO ipbans VALUES('%s', %u)", WorldDatabase.EscapeString(ip).c_str(), duration);
-	sLogonCommHandler.LogonDatabaseSQLExecute("INSERT INTO ipbans VALUES('%s', %u)", WorldDatabase.EscapeString(ip).c_str(), duration);
+	time_t expire_time;
+	if ( dLength == 0)		// permanent ban
+		expire_time = 0;
+	else
+	{
+		time_t dPeriod = convTimePeriod(dLength, dType);
+		if ( dPeriod == 0)
+		{
+			RedSystemMessage(m_session, "Invalid ban duration");
+			return false;
+		}
+		time( &expire_time );
+		expire_time += dPeriod;
+	}
+	
+	SystemMessage(m_session, "Adding [%s] to IP ban table, expires %s", ip, (expire_time == 0)? "Never" : ctime( &expire_time ));
+	sLogonCommHandler.LogonDatabaseSQLExecute("REPLACE INTO ipbans VALUES ('%s', %u);", WorldDatabase.EscapeString(ip).c_str(), (uint32)expire_time);
+	sLogonCommHandler.LogonDatabaseReloadAccounts();
+	return true;
+}
+
+bool ChatHandler::HandleIPUnBanCommand(const char * args, WorldSession * m_session)
+{
+	char ip[16] = {0};		// IPv4 address
+
+	// we require at least one argument, the network address to unban
+	if ( sscanf(args, "%15s", ip) < 1)
+		return false;
+
+	/**
+	 * We can afford to be less fussy with the validty of the IP address given since
+	 * we are only attempting to remove it.
+	 * Sadly, we can only blindly execute SQL statements on the logonserver so we have
+	 * no idea if the address existed and so the account/IPBanner cache requires reloading.
+	 */
+
+	SystemMessage(m_session, "Removing [%s] from IP ban table if it exists", ip);
+	sLogonCommHandler.LogonDatabaseSQLExecute("DELETE FROM ipbans WHERE ip = '%s';", WorldDatabase.EscapeString(ip).c_str());
+	sLogonCommHandler.LogonDatabaseReloadAccounts();
 	return true;
 }
 
@@ -2494,6 +2512,8 @@ bool ChatHandler::HandleForceRenameCommand(const char * args, WorldSession * m_s
 		plr->SaveToDB(false);
 		BlueSystemMessageToPlr(plr, "%s forced your character to be renamed next logon.", m_session->GetPlayer()->GetName());
 	}
+
+	WorldDatabase.Execute("INSERT INTO banned_names ('%s')", pi->name.c_str());
 
 	GreenSystemMessage(m_session, "Forcing %s to rename his character next logon.", args);
 	return true;
@@ -2676,7 +2696,10 @@ bool ChatHandler::HandleGORotate(const char * args, WorldSession * m_session)
 	go->SaveToDB();
 
 	// despawn and respawn
-	go->Despawn(1000);
+	//go->Despawn(1000);
+	go->RemoveFromWorld();
+	go->SetNewGuid(m_session->GetPlayer()->GetMapMgr()->GenerateGameobjectGuid());
+	go->PushToWorld(m_session->GetPlayer()->GetMapMgr());
 	return true;
 }
 
@@ -2696,6 +2719,7 @@ bool ChatHandler::HandleGOMove(const char * args, WorldSession * m_session)
 	go->SetFloatValue(GAMEOBJECT_POS_Y, m_session->GetPlayer()->GetPositionY());
 	go->SetFloatValue(GAMEOBJECT_POS_Z, m_session->GetPlayer()->GetPositionZ());
 	go->SetFloatValue(GAMEOBJECT_FACING, m_session->GetPlayer()->GetOrientation());
+	go->SetNewGuid(m_session->GetPlayer()->GetMapMgr()->GenerateGameobjectGuid());
 	go->SaveToDB();
 	go->PushToWorld(m_session->GetPlayer()->GetMapMgr());
 	return true;
@@ -2707,7 +2731,7 @@ bool ChatHandler::HandleNpcPossessCommand(const char * args, WorldSession * m_se
 	if(!pTarget)
 	{
 		pTarget = getSelectedCreature(m_session, false);
-		if(pTarget && pTarget->IsPet() || pTarget->GetUInt32Value(UNIT_FIELD_CREATEDBY) != 0)
+		if(pTarget && (pTarget->IsPet() || pTarget->GetUInt32Value(UNIT_FIELD_CREATEDBY) != 0))
 			return false;
 	}
 		
@@ -2924,5 +2948,62 @@ bool ChatHandler::HandleSendRunSpeedChange(const char * args, WorldSession * m_s
 	data << uint8(1);
 	data << s;
 	m_session->GetPlayer()->GetSession()->SendPacket(&data);
+	return true;
+}
+
+bool ChatHandler::HandleAddGuardCommand(const char * args, WorldSession * m_session)
+{
+	uint32 guardId;
+	uint8 factionId;
+	if(sscanf(args, "%u %u", &guardId, &factionId) != 2)
+		return false;
+
+	if(factionId < 0 || factionId > 1)
+	{
+		RedSystemMessage(m_session, "Invalid faction. Options are 0 (Alliance) and 1 (Horde).");
+		return true;
+	}
+
+	if(!CreatureProtoStorage.LookupEntry(guardId) || !CreatureNameStorage.LookupEntry(guardId))
+	{
+		RedSystemMessage(m_session, "We cannot find a creature entry for %u.", guardId);
+		return true;
+	}
+
+	AreaTable * at = sAreaStore.LookupEntry(m_session->GetPlayer()->GetMapMgr()->GetAreaID(m_session->GetPlayer()->GetPositionX(), m_session->GetPlayer()->GetPositionY()));
+	if(!at || !at->ZoneId)
+	{
+		RedSystemMessage(m_session, "TerrainMgr was unable to locate an AreaID. This is a core bug.");
+		return true;
+	}
+	uint32 zoneId = at->ZoneId;
+	string fieldName = ((bool)factionId) ? "hordeEntry" : "allianceEntry";
+	uint32 startTime = getMSTime();
+	if(!ZoneGuardStorage.LookupEntry(zoneId))
+		WorldDatabase.WaitExecute("INSERT INTO zoneguards (zoneId, %s) VALUES (%u, %u)", fieldName.c_str(), zoneId, guardId);
+	else
+		WorldDatabase.WaitExecute("UPDATE zoneguards SET %s = %u WHERE zoneId = %u", fieldName.c_str(), guardId, zoneId);
+	ZoneGuardStorage.Reload();
+
+	CreatureInfo * ci = CreatureNameStorage.LookupEntry(guardId);
+	GreenSystemMessage(m_session, "Guard [%s] added to zone %u in %u ms.", ci->Name, zoneId, getMSTime() - startTime);
+	return true;
+}
+
+bool ChatHandler::HandleRenameGuildCommand(const char* args, WorldSession *m_session)
+{
+	Player * plr = getSelectedChar(m_session);
+	if(!plr || !plr->GetGuildId() || !args || !strlen(args)) return false;
+
+	Guild * pGuild = objmgr.GetGuild(plr->GetGuildId());
+	if(!pGuild) return true; // how the fuck?
+
+	if(objmgr.GetGuildByGuildName(args))
+	{
+		RedSystemMessage(m_session, "Name already taken!");
+		return true;
+	}
+	pGuild->RenameGuild(args);
+	GreenSystemMessage(m_session, "Guild renamed!");
 	return true;
 }

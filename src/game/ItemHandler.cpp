@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Item Handlers
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -18,12 +23,20 @@ void WorldSession::HandleSplitOpcode(WorldPacket& recv_data)
 {
 	if(!_player->IsInWorld()) return;
 	CHECK_PACKET_SIZE(recv_data, 5);
-	int8 DstInvSlot=0, DstSlot=0, SrcInvSlot=0, SrcSlot=0, count=0;
+	int8 DstInvSlot=0, DstSlot=0, SrcInvSlot=0, SrcSlot=0;
+	uint8 count=0;
+
 	bool result;
 
 	recv_data >> SrcInvSlot >> SrcSlot >> DstInvSlot >> DstSlot >> count;
 	if(!GetPlayer())
 		return;
+
+	if(count >= 127)
+	{
+		/* exploit fix */
+		return;
+	}
 
 	int32 c=count;
 	Item *i1 =_player->GetItemInterface()->GetInventoryItem(SrcInvSlot,SrcSlot);
@@ -678,14 +691,14 @@ void WorldSession::HandleBuyBackOpcode( WorldPacket & recv_data )
 {
 	if(!_player->IsInWorld()) return;
 	CHECK_PACKET_SIZE(recv_data, 8);
-	WorldPacket data;
+	WorldPacket data(16);
 	uint64 guid;
 	int32 stuff;
 	Item* add ;
 	bool result;
 	uint8 error;
 
-	sLog.outDetail( "WORLD: Recieved CMSG_BUYBACK_ITEM" );
+	sLog.outDetail( "WORLD: Received CMSG_BUYBACK_ITEM" );
 
 	recv_data >> guid >> stuff;
 	stuff -= 74;
@@ -755,7 +768,7 @@ void WorldSession::HandleSellItemOpcode( WorldPacket & recv_data )
 {
 	if(!_player->IsInWorld()) return;
 	CHECK_PACKET_SIZE(recv_data, 17);
-	sLog.outDetail( "WORLD: Recieved CMSG_SELL_ITEM" );
+	sLog.outDetail( "WORLD: Received CMSG_SELL_ITEM" );
 	if(!GetPlayer())
 		return;
 
@@ -852,7 +865,7 @@ void WorldSession::HandleBuyItemInSlotOpcode( WorldPacket & recv_data ) // drag 
 {
 	if(!_player->IsInWorld()) return;
 	CHECK_PACKET_SIZE(recv_data, 22);
-	sLog.outDetail( "WORLD: Recieved CMSG_BUY_ITEM_IN_SLOT" );
+	sLog.outDetail( "WORLD: Received CMSG_BUY_ITEM_IN_SLOT" );
 
 	if(!GetPlayer())
 		return;
@@ -1030,7 +1043,7 @@ void WorldSession::HandleBuyItemInSlotOpcode( WorldPacket & recv_data ) // drag 
 				}
 			}
 		}
-		WorldPacket data(50);
+		WorldPacket data(45);
 		BuildItemPushResult(&data, _player->GetGUID(), ITEM_PUSH_TYPE_RECEIVE, itemd.amount, itemid, 0);
 		SendPacket(&data);
 	}
@@ -1054,7 +1067,7 @@ void WorldSession::HandleBuyItemOpcode( WorldPacket & recv_data ) // right-click
 	if(!GetPlayer())
 		return;
 
-	WorldPacket data;
+	WorldPacket data(45);
 	uint64 srcguid=0;
 	uint32 itemid=0;
 	int8 slot=0;
@@ -1176,6 +1189,9 @@ void WorldSession::HandleListInventoryOpcode( WorldPacket & recv_data )
 	if (unit == NULL)
 		return;
 
+	if(unit->GetAIInterface())
+		unit->GetAIInterface()->StopMovement(180000);
+
 	SendInventoryList(unit);
 }
 
@@ -1229,7 +1245,7 @@ void WorldSession::HandleAutoStoreBagItemOpcode( WorldPacket & recv_data )
 	if(!GetPlayer())
 		return;
 
-	WorldPacket data;
+	//WorldPacket data;
 	WorldPacket packet;
 	int8 SrcInv=0, Slot=0, DstInv=0;
 //	Item *item= NULL;
@@ -1339,7 +1355,7 @@ void WorldSession::HandleReadItemOpcode(WorldPacket &recvPacket)
 		return;
 
 	Item *item = _player->GetItemInterface()->GetInventoryItem(slot);
-	sLog.outDebug("Recieved CMSG_READ_ITEM %d", slot);
+	sLog.outDebug("Received CMSG_READ_ITEM %d", slot);
 
 	if(item)
 	{
@@ -1425,7 +1441,7 @@ void WorldSession::HandleRepairItemOpcode(WorldPacket &recvPacket)
 			}
 		}
 	}
-	sLog.outDebug("Recieved CMSG_REPAIR_ITEM %d", itemguid);
+	sLog.outDebug("Received CMSG_REPAIR_ITEM %d", itemguid);
 }
 
 void WorldSession::HandleBuyBankSlotOpcode(WorldPacket& recvPacket) 
@@ -1482,7 +1498,7 @@ void WorldSession::HandleAutoBankItemOpcode(WorldPacket &recvPacket)
 	CHECK_PACKET_SIZE(recvPacket, 2);
 	sLog.outDebug("WORLD: CMSG_AUTO_BANK_ITEM");
 
-	WorldPacket data;
+	//WorldPacket data;
 
 	bool result;
 	SlotResult slotresult;
@@ -1535,7 +1551,7 @@ void WorldSession::HandleAutoStoreBankItemOpcode(WorldPacket &recvPacket)
 	CHECK_PACKET_SIZE(recvPacket, 2);
 	sLog.outDebug("WORLD: CMSG_AUTOSTORE_BANK_ITEM");
 
-	WorldPacket data;
+	//WorldPacket data;
 
 	bool result;
 	int8 SrcInvSlot, SrcSlot;//, error=0, slot=-1, specialbagslot=-1;

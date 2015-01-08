@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Character Handling (Create/Login)
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -16,27 +21,6 @@
 #include <openssl/md5.h>
 #include "../shared/AuthCodes.h"
 #include "../shared/svn_revision.h"
-
-#if PLATFORM == PLATFORM_WIN32
-#define PLATFORM_TEXT "Win32"
-#elif PLATFORM == PLATFORM_UNIX
-#if UNIX_FLAVOUR == UNIX_FLAVOUR_LINUX
-#define PLATFORM_TEXT "Linux"
-#elif UNIX_FLAVOUR == UNIX_FLAVOUR_BSD
-#define PLATFORM_TEXT "FreeBSD"
-#else
-#define PLATFORM_TEXT "Unknown"
-#endif
-#else
-#define PLATFORM_TEXT "unknown"
-#endif
-
-#define SERVER_NAME "Antrix"
-#ifdef _DEBUG
-#define CONFIG "Debug"
-#else
-#define CONFIG "Release"
-#endif
 
 bool VerifyName(const char * name, size_t nlen)
 {
@@ -64,7 +48,7 @@ void CapitalizeString(string& arg)
 
 void WorldSession::HandleCharEnumOpcode( WorldPacket & recv_data )
 {	
-	uint32 start_time = getMSTime();
+	/*uint32 start_time = getMSTime();
 
 	// loading characters
 	QueryResult* result = CharacterDatabase.Query("SELECT guid, level, race, class, gender, bytes, bytes2, guildid, name, positionX, positionY, positionZ, mapId, zoneId, banned, restState, deathstate, forced_rename_pending FROM characters WHERE acct=%u ORDER BY guid", GetAccountId());
@@ -103,6 +87,7 @@ void WorldSession::HandleCharEnumOpcode( WorldPacket & recv_data )
 			// added to catch an assertion failure at Player::LoadFromDB function.
 			plr->LoadFromDB_Light( fields, guid );
 			sLog.outDebug("Loaded char guid "I64FMTD" [%s] from account %d for enum build.",guid,plr->GetName(), GetAccountId());
+			//printf("Guid: "I64FMT"\n", plr->GetGUID());
 			plr->BuildEnumData( &data );
 			_side|=(plr->GetTeam()+1);
 
@@ -119,6 +104,128 @@ void WorldSession::HandleCharEnumOpcode( WorldPacket & recv_data )
 	data.put<uint8>(0, num);
 
 	sLog.outDetail("[Character Enum] Built in %u ms.", getMSTime() - start_time);
+	SendPacket( &data );*/
+	struct player_item
+	{
+		uint32 displayid;
+		uint8 invtype;
+	};
+
+	player_item items[20];
+	uint32 slot;
+	uint32 i;
+	ItemPrototype * proto;
+
+	//uint32 start_time = getMSTime();
+
+	// loading characters
+	QueryResult* result = CharacterDatabase.Query("SELECT guid, level, race, class, gender, bytes, bytes2, guildid, name, positionX, positionY, positionZ, mapId, zoneId, banned, restState, deathstate, forced_rename_pending FROM characters WHERE acct=%u ORDER BY guid", GetAccountId());
+	QueryResult * res;
+	CreatureInfo *info = NULL;
+	uint8 num = 0;
+
+	// should be more than enough.. 200 bytes per char..
+	WorldPacket data((result ? result->GetRowCount() * 200 : 1));	
+
+	// parse m_characters and build a mighty packet of
+	// characters to send to the client.
+	data.SetOpcode(SMSG_CHAR_ENUM);
+
+	data << num;
+	if( result )
+	{
+		uint64 guid;
+		uint8 Class;
+		uint32 bytes2;
+		Field *fields;
+		do
+		{
+			fields = result->Fetch();
+			guid = fields[0].GetUInt32();
+			bytes2 = fields[6].GetUInt32();
+			Class = fields[3].GetUInt8();			
+
+			/* build character enum, w0000t :p */
+			data << fields[0].GetUInt64();		// guid
+			data << fields[8].GetString();		// name
+			data << fields[2].GetUInt8();		// race
+			data << fields[3].GetUInt8();		// class
+			data << fields[4].GetUInt8();		// gender
+			data << fields[5].GetUInt32();		// PLAYER_BYTES
+			data << uint8(bytes2 & 0xFF);		// facial hair
+			data << fields[1].GetUInt8();		// Level
+			data << fields[13].GetUInt32();		// zoneid
+			data << fields[12].GetUInt32();		// Mapid
+			data << fields[11].GetFloat();		// X
+			data << fields[10].GetFloat();		// Y
+			data << fields[9].GetFloat();		// Z
+			data << fields[7].GetUInt32();		// GuildID
+
+			if(fields[14].GetBool())
+			{
+				//data << (uint32)7;	// Banned (cannot login)
+				data << uint32(0x01A04040);
+			}
+			else if(fields[17].GetBool())
+				data << uint32(0x00A04342);  // wtf blizz? :P (rename pending)
+			else if(fields[16].GetUInt32() != 0)
+				data << (uint32)8704; // Dead (displaying as Ghost)
+			else
+				data << uint32(1);		// alive
+
+			data << fields[15].GetUInt8();		// Rest State
+
+			if(Class==9 || Class==3)
+			{
+				res = CharacterDatabase.Query("SELECT entryid FROM playerpets WHERE ownerguid="I64FMTD" AND active=1", guid);
+
+				if(res)
+				{
+					info = CreatureNameStorage.LookupEntry(res->Fetch()[0].GetUInt32());
+					delete res;
+				}
+				else
+					info=NULL;
+			}
+			else
+				info=NULL;
+
+			if(info)  //PET INFO uint32 displayid,	uint32 level,		 uint32 familyid
+				data << uint32(info->DisplayID) << uint32(10) << uint32(info->Family);
+			else
+				data << uint32(0) << uint32(0) << uint32(0);
+
+			res = CharacterDatabase.Query("SELECT slot, entry FROM playeritems WHERE ownerguid=%u and containerslot=-1 and slot < 19 and slot >= 0", GUID_LOPART(guid));
+
+			memset(items, 0, sizeof(player_item) * 20);
+			if(res)
+			{
+				do 
+				{
+					proto = ItemPrototypeStorage.LookupEntry(res->Fetch()[1].GetUInt32());
+					if(proto)
+					{
+						slot = res->Fetch()[0].GetUInt32();
+						items[slot].displayid = proto->DisplayInfoID;
+						items[slot].invtype = proto->InventoryType;
+					}
+				} while(res->NextRow());
+				delete res;
+			}
+
+			for( i = 0; i < 20; ++i )
+				data << items[i].displayid << items[i].invtype;
+
+			num++;
+		}
+		while( result->NextRow() );
+
+		delete result;
+	}
+
+	data.put<uint8>(0, num);
+
+	//Log.Debug("Character Enum", "Built in %u ms.", getMSTime() - start_time);
 	SendPacket( &data );
 }
 
@@ -150,6 +257,19 @@ void WorldSession::HandleCharCreateOpcode( WorldPacket & recv_data )
 		return;
 	}
 
+	name = WorldDatabase.EscapeString(name);
+	QueryResult * result = WorldDatabase.Query("SELECT COUNT(*) FROM banned_names WHERE name = '%s'", name.c_str());
+	if(result)
+	{
+		if(result->Fetch()[0].GetUInt32() > 0)
+		{
+			// That name is banned!
+			OutPacket(SMSG_CHAR_CREATE, 1, "\x50"); // You cannot use that name
+			delete result;
+			return;
+		}
+		delete result;
+	}
 	// loading characters
 	
 	//checking number of chars is useless since client will not allow to create more than 10 chars
@@ -165,18 +285,28 @@ void WorldSession::HandleCharCreateOpcode( WorldPacket & recv_data )
 		return;
 	}
 
+	QueryResult * resulta = CharacterDatabase.Query("SELECT race FROM characters WHERE acct = %u AND race in (1,3,4,7,11)", _accountId);
+	QueryResult * resulth = CharacterDatabase.Query("SELECT race FROM characters WHERE acct = %u AND race in (2,5,8,9,10)", _accountId);
+	SetSide(0);
+	if (resulta)
+		SetSide(1);
+	if (resulth)
+		SetSide(2);
+
+
+
 	//Same Faction limitation only applies to PVP and RPPVP realms :)
 	uint32 realmType = sLogonCommHandler.GetRealmType();
 	if(!HasGMPermissions() && (realmType==REALMTYPE_PVP||realmType==REALMTYPE_RPPVP))
 	{
 		if(
-			((pNewChar->GetTeam()== 0) && (_side&2))||
-			((pNewChar->GetTeam()== 1) && (_side&1))
+			((pNewChar->GetTeam()== 0) && (_side == 2))||
+			((pNewChar->GetTeam()== 1) && (_side == 1))
 			)
 		{
 			pNewChar->ok_to_remove = true;
 			delete pNewChar;
-			WorldPacket data;
+			WorldPacket data(1);
 			data.SetOpcode(SMSG_CHAR_CREATE);
 			data << (uint8)ALL_CHARS_ON_PVP_REALM_MUST_AT_SAME_SIDE;
 			SendPacket( &data );
@@ -206,6 +336,8 @@ void WorldSession::HandleCharCreateOpcode( WorldPacket & recv_data )
 	pn->gender = pNewChar->getGender();
 	pn->publicNote="";
 	pn->officerNote="";
+	pn->m_Group=0;
+	pn->subGroup=0;
 	
 	pn->team = pNewChar->GetTeam ();
 	objmgr.AddPlayerInfo(pn);
@@ -338,13 +470,27 @@ void WorldSession::HandleCharDeleteOpcode( WorldPacket & recv_data )
 		plr->DeleteFromDB();
 		//if charter leader
 		if(plr->m_charter)
+		{
 			plr->m_charter->RemoveSignature(plr->GetGUID());
+			if(plr->m_charter->GetLeader() == plr->GetGUIDLow())
+			{
+				plr->m_charter->Destroy();
+			}
+		}
 		
 		Guild *pGuild = objmgr.GetGuild(plr->GetGuildId());
 		if(pGuild)
 		{
-			pGuild->DeleteGuildMember(plr->GetGUID());
+			if(pGuild->GetGuildLeaderGuid() == plr->GetGUID())
+			{
+				pGuild->DeleteGuildMembers();
+				pGuild->RemoveFromDb();
+			}
+			else
+				pGuild->DeleteGuildMember(plr->GetGUID());
 		}
+
+		sPlrLog.write("Account: %s | IP: %s >> Deleted player %s", GetAccountName().c_str(), GetSocket()->GetRemoteIP().c_str(), plr->GetName());
 
 		plr->ok_to_remove = true;
 		delete plr;
@@ -369,7 +515,12 @@ void WorldSession::HandleCharRenameOpcode(WorldPacket & recv_data)
 
 	QueryResult * result = CharacterDatabase.Query("SELECT forced_rename_pending FROM characters WHERE guid = %u AND acct = %u", 
 		(uint32)guid, _accountId);
-	if(result == 0) return;
+	if(result == 0)
+	{
+		delete result;
+		return;
+	}
+	delete result;
 
 	// Check name for rule violation.
 	const char * szName=name.c_str();
@@ -382,6 +533,20 @@ void WorldSession::HandleCharRenameOpcode(WorldPacket & recv_data)
 			SendPacket(&data);
 			return;
 		}
+	}
+
+	name = WorldDatabase.EscapeString(name);
+	QueryResult * result2 = WorldDatabase.Query("SELECT COUNT(*) FROM banned_names WHERE name = '%s'", name.c_str());
+	if(result2)
+	{
+		if(result2->Fetch()[0].GetUInt32() > 0)
+		{
+			// That name is banned!
+			data << uint8(0x31);
+			data << guid << name;
+			SendPacket(&data);
+		}
+		delete result2;
 	}
 
 	// Check if name is in use.
@@ -432,13 +597,16 @@ bool WorldSession::PlayerLogin(uint32 playerGuid, uint32 forced_map_id, uint32 f
 	plr->SetSession(this);
 	m_bIsWLevelSet = false;
 
-	if(!plr->LoadFromDB(GUID_LOPART(playerGuid)))
+	if(!plr->LoadFromDB(playerGuid))
 	{
 		// kick em.
-		sCheatLog.writefromsession(this, "Tried to log in with invalid player guid %u.", playerGuid);
-		Disconnect();
+		//sCheatLog.writefromsession(this, "Tried to log in with invalid player guid %u.", playerGuid);
+		//Disconnect();
 		plr->ok_to_remove = true;
 		delete plr;
+                uint8 respons = CHAR_LOGIN_NO_CHARACTER;
+                OutPacket(SMSG_CHARACTER_LOGIN_FAILED, 1, &respons);
+
 		return false;
 	}
 
@@ -449,7 +617,11 @@ bool WorldSession::PlayerLogin(uint32 playerGuid, uint32 forced_map_id, uint32 f
 	movement_packet[0] = m_MoverWoWGuid.GetNewGuidMask();
 	memcpy(&movement_packet[1], m_MoverWoWGuid.GetNewGuid(), m_MoverWoWGuid.GetNewGuidLen());
 
+#ifndef USING_BIG_ENDIAN
 	StackWorldPacket<20> datab(CMSG_DUNGEON_DIFFICULTY);
+#else
+	WorldPacket datab(CMSG_DUNGEON_DIFFICULTY, 20);
+#endif
 	datab << plr->iInstanceType;
 	datab << uint32(0x01);
 	datab << uint32(0x00);
@@ -485,11 +657,18 @@ bool WorldSession::PlayerLogin(uint32 playerGuid, uint32 forced_map_id, uint32 f
 		info->race = plr->getRace();
 		info->Rank = plr->GetPVPRank();
 		info->team = plr->GetTeam();
+		info->m_Group=0;
+		info->subGroup=0;
 		objmgr.AddPlayerInfo(info);
 	}
+	plr->m_playerInfo = info;
 
 	// account data == UI config
+#ifndef USING_BIG_ENDIAN
 	StackWorldPacket<128> data(SMSG_ACCOUNT_DATA_MD5);
+#else
+	WorldPacket data(SMSG_ACCOUNT_DATA_MD5, 128);
+#endif
 
 	for (int i = 0; i < 8; i++)
 	{
@@ -506,7 +685,11 @@ bool WorldSession::PlayerLogin(uint32 playerGuid, uint32 forced_map_id, uint32 f
 		MD5_Update(&ctx, acct_data->data, acct_data->sz);
 		uint8 md5hash[MD5_DIGEST_LENGTH];
 		MD5_Final(md5hash, &ctx);
+#ifndef USING_BIG_ENDIAN
 		data.Write(md5hash, MD5_DIGEST_LENGTH);
+#else
+		data.append(md5hash, MD5_DIGEST_LENGTH);
+#endif
 	}
 	SendPacket(&data);
 
@@ -528,7 +711,11 @@ bool WorldSession::PlayerLogin(uint32 playerGuid, uint32 forced_map_id, uint32 f
 			if(plr->GetMapId() != pTrans->GetMapId())	   // loaded wrong map
 			{
 				plr->SetMapId(pTrans->GetMapId());
+#ifndef USING_BIG_ENDIAN
 				StackWorldPacket<20> dataw(SMSG_NEW_WORLD);
+#else
+				WorldPacket dataw(SMSG_NEW_WORLD, 20);
+#endif
 				dataw << pTrans->GetMapId() << c_tposx << c_tposy << c_tposz << plr->GetOrientation();
 				SendPacket(&dataw);
 
@@ -626,21 +813,19 @@ bool WorldSession::PlayerLogin(uint32 playerGuid, uint32 forced_map_id, uint32 f
 	if(sWorld.sendRevisionOnJoin)
 	{
 		uint32 rev = g_getRevision();
-		if(!sWorld.SendStatsOnJoin) {
-			_player->BroadcastMessage("Server: %s%s%s Core v2.1.2-%u-%s/%s|r %s %s", MSG_COLOR_LIGHTBLUE, 
-				SERVER_NAME, MSG_COLOR_WHITE, rev, CONFIG, PLATFORM_TEXT, __DATE__, __TIME__);
-		} else {
-			_player->BroadcastMessage("Server Version: %s%s%s Core v2.1.2.%u-%s/%s|r %s\nOnline Players: %s%u |rPeak: %s%u|r Accepted Connections: %s%u", MSG_COLOR_LIGHTBLUE, 
-				SERVER_NAME, MSG_COLOR_WHITE, rev, CONFIG, PLATFORM_TEXT, __DATE__, 
-				MSG_COLOR_WHITE, sWorld.GetSessionCount(), MSG_COLOR_WHITE, sWorld.PeakSessionCount, MSG_COLOR_WHITE, sWorld.mAcceptedConnections);
-		}
+#ifdef HOARD
+		_player->BroadcastMessage("You are playing on %sAscent r%u/%s-%s-%s-Hoard", MSG_COLOR_WHITE,
+			rev, CONFIG, PLATFORM_TEXT, ARCH);
+#else
+		_player->BroadcastMessage("You are playing on %sAscent r%u/%s-%s-%s %s(www.ascentemu.com)", MSG_COLOR_WHITE,
+			rev, CONFIG, PLATFORM_TEXT, ARCH, MSG_COLOR_LIGHTBLUE);
+#endif
 	}
-	else
+
+	if(sWorld.SendStatsOnJoin)
 	{
-		if(sWorld.SendStatsOnJoin) {
-			_player->BroadcastMessage("This server has %u players currently online, with a peak of %u, and has accepted %u connections since its startup.", 
-				sWorld.GetSessionCount(), sWorld.PeakSessionCount, sWorld.mAcceptedConnections );
-		}
+		_player->BroadcastMessage("Online Players: %s%u |rPeak: %s%u|r Accepted Connections: %s%u",
+			MSG_COLOR_WHITE, sWorld.GetSessionCount(), MSG_COLOR_WHITE, sWorld.PeakSessionCount, MSG_COLOR_WHITE, sWorld.mAcceptedConnections);
 	}
 
 	// Calculate rested experience if there is time between lastlogoff and now
@@ -678,27 +863,6 @@ bool WorldSession::PlayerLogin(uint32 playerGuid, uint32 forced_map_id, uint32 f
 		plr->SendInitialLogonPackets();
 		plr->AddToWorld();
 	}
-
-#ifndef CLUSTERING
-	/*	if(sWorld.m_useIrc)
-	sIRCBot.SendMessage("> %s from account %u entered world.", _player->GetName(), GetAccountId());*/
-
-	if(_player->GetMapId() == 489 ||
-		_player->GetMapId() == 529 /*|| _player->GetMapId() == 30*/)
-	{
-		uint32 battlegroundtype = sBattlegroundMgr.GetBattleGroundTypeByMapId(_player->GetMapId());
-		Battleground *battleground = sBattlegroundMgr.GetBattlegroundByInstanceID(_player->GetInstanceID(),battlegroundtype);
-		if(battleground == NULL)	// bad battleground
-		{
-			_player->SetInstanceID(_player->m_bgEntryPointInstance);
-			_player->_Relocate(_player->m_bgEntryPointMap, LocationVector(_player->m_bgEntryPointX, _player->m_bgEntryPointY, _player->m_bgEntryPointZ, 
-				_player->m_bgEntryPointO), true, true);
-		} else {
-			// we are ALREADY in battleground! no need to transport ;)
-			battleground->AddPlayer(_player, false, true);
-		}
-	}
-#endif
 
 	sInstanceSavingManager.BuildSavedInstancesForPlayer(plr);
 	objmgr.AddPlayer(_player);

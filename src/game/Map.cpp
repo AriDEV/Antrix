@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -20,7 +25,7 @@
 
 Map::Map(uint32 mapid)
 {
-	memset(spawns,0,sizeof(spawns));
+	memset(spawns,0,sizeof(CellSpawns*) * _sizeX);
 
 	_mapInfo = WorldMapInfoStorage.LookupEntry(mapid);
 	_mapId = mapid;
@@ -40,6 +45,11 @@ Map::Map(uint32 mapid)
 
 	// Setup terrain
 	_terrain = new TerrainMgr(sWorld.MapPath, _mapId, instance);
+	if(!_terrain->LoadTerrainHeader())
+	{
+		delete _terrain;
+		_terrain = NULL;
+	}
 
 	if(!instance)
 		CreateMapMgrInstance();
@@ -69,21 +79,30 @@ Map::~Map()
 
 	for(uint32 x=0;x<_sizeX;x++)
 	{
-		for(uint32 y=0;y<_sizeY;y++)
+		if(spawns[x])
 		{
-			if(spawns[x][y])
-			{	
-				CellSpawns * sp=spawns[x][y];
-				for(CreatureSpawnList::iterator i = sp->CreatureSpawns.begin();i!=sp->CreatureSpawns.end();i++)
-					delete (*i);
-				for(GOSpawnList::iterator it = sp->GOSpawns.begin();it!=sp->GOSpawns.end();it++)
-					delete (*it);
+			for(uint32 y=0;y<_sizeY;y++)
+			{
+				if(spawns[x][y])
+				{	
+					CellSpawns * sp=spawns[x][y];
+					for(CreatureSpawnList::iterator i = sp->CreatureSpawns.begin();i!=sp->CreatureSpawns.end();i++)
+						delete (*i);
+					for(GOSpawnList::iterator it = sp->GOSpawns.begin();it!=sp->GOSpawns.end();it++)
+						delete (*it);
 
-				delete sp;
-				spawns[x][y]=NULL;
+					delete sp;
+					spawns[x][y]=NULL;
+				}
 			}
+			delete [] spawns[x];
 		}
 	}
+
+	for(CreatureSpawnList::iterator i = staticSpawns.CreatureSpawns.begin(); i != staticSpawns.CreatureSpawns.end(); ++i)
+		delete *i;
+	for(GOSpawnList::iterator i = staticSpawns.GOSpawns.begin(); i != staticSpawns.GOSpawns.end(); ++i)
+		delete *i;
 }
 
 MapMgr * Map::GetInstance(uint32 instanceId)
@@ -289,6 +308,12 @@ void Map::LoadSpawns(bool reload)
 			cspawn->o = fields[6].GetFloat();
 			uint32 cellx=float2int32(((_maxX-cspawn->x)/_cellSize));
 			uint32 celly=float2int32(((_maxY-cspawn->y)/_cellSize));
+			if(spawns[cellx]==NULL)
+			{
+				spawns[cellx]=new CellSpawns*[_sizeY];
+				memset(spawns[cellx],0,sizeof(CellSpawns*)*_sizeY);
+			}
+
 			if(!spawns[cellx][celly])
 				spawns[cellx][celly]=new CellSpawns;
 			cspawn->movetype = fields[7].GetUInt32();
@@ -306,7 +331,63 @@ void Map::LoadSpawns(bool reload)
 		delete result;
 	}
 
+	result = WorldDatabase.Query("SELECT * FROM creature_staticspawns WHERE Map = %u",this->_mapId);
+	if(result)
+	{
+		do{
+			Field * fields = result->Fetch();
+			CreatureSpawn * cspawn = new CreatureSpawn;
+			cspawn->id = fields[0].GetUInt32();
+			cspawn->form = FormationMgr::getSingleton().GetFormation(cspawn->id);
+			cspawn->entry = fields[1].GetUInt32();
+			cspawn->x = fields[3].GetFloat();
+			cspawn->y = fields[4].GetFloat();
+			cspawn->z = fields[5].GetFloat();
+			cspawn->o = fields[6].GetFloat();
+			cspawn->movetype = fields[7].GetUInt32();
+			cspawn->displayid = fields[8].GetUInt32();
+			cspawn->factionid = fields[9].GetUInt32();
+			cspawn->flags = fields[10].GetUInt32();
+			cspawn->bytes = fields[11].GetUInt32();
+			cspawn->bytes2 = fields[12].GetUInt32();
+			cspawn->emote_state = fields[13].GetUInt32();
+			cspawn->respawnNpcLink = fields[14].GetUInt32();
+			staticSpawns.CreatureSpawns.insert(cspawn);
+			++CreatureSpawnCount;
+		}while(result->NextRow());
+
+		delete result;
+	}
+
 	GameObjectSpawnCount = 0;
+	result = WorldDatabase.Query("SELECT * FROM gameobject_staticspawns WHERE Map = %u",this->_mapId);
+	if(result)
+	{
+		do{
+			Field * fields = result->Fetch();
+			GOSpawn * gspawn = new GOSpawn;
+			gspawn->entry = fields[1].GetUInt32();
+			gspawn->id = fields[0].GetUInt32();
+			gspawn->x=fields[3].GetFloat();
+			gspawn->y=fields[4].GetFloat();
+			gspawn->z=fields[5].GetFloat();
+			gspawn->facing=fields[6].GetFloat();
+			gspawn->o =fields[7].GetFloat();
+			gspawn->o1=fields[8].GetFloat();
+			gspawn->o2=fields[9].GetFloat();
+			gspawn->o3=fields[10].GetFloat();
+			gspawn->state=fields[11].GetUInt32();
+			gspawn->flags=fields[12].GetUInt32();
+			gspawn->faction=fields[13].GetUInt32();
+			gspawn->scale = fields[14].GetFloat();
+			gspawn->stateNpcLink = fields[15].GetUInt32();
+			staticSpawns.GOSpawns.insert(gspawn);
+			++GameObjectSpawnCount;
+		}while(result->NextRow());
+
+		delete result;
+	}
+
 	result = WorldDatabase.Query("SELECT * FROM gameobject_spawns WHERE Map = %u",this->_mapId);
 	if(result)
 	{
@@ -331,6 +412,12 @@ void Map::LoadSpawns(bool reload)
 
 			uint32 cellx=float2int32(((_maxX-gspawn->x)/_cellSize));
 			uint32 celly=float2int32(((_maxY-gspawn->y)/_cellSize));
+			if(spawns[cellx]==NULL)
+			{
+				spawns[cellx]=new CellSpawns*[_sizeY];
+				memset(spawns[cellx],0,sizeof(CellSpawns*)*_sizeY);
+			}
+
 			if(!spawns[cellx][celly])
 				spawns[cellx][celly]=new CellSpawns;
 
@@ -341,7 +428,7 @@ void Map::LoadSpawns(bool reload)
 		delete result;
 	}
 
-	sLog.outString("Map %u: %u creatures / %u gameobjects loaded.", _mapId, CreatureSpawnCount, GameObjectSpawnCount);
+	Log.Notice("Map", "%u creatures / %u gameobjects on map %u cached.", CreatureSpawnCount, GameObjectSpawnCount, _mapId);
 }
 
 MapMgr * Map::GetInstanceByGroup(Group *pGroup, Player * pCaller)

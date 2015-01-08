@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -162,7 +167,7 @@ BAN_STATUS IPBanner::CalculateBanStatus(in_addr ip_address)
 
 	// loop storage array
 	set<IPBan*>::iterator itr = banList.begin();
-	uint32 bantime = 0;
+	uint32 expiretime;
 	bool banned = false;
 
 	for(; itr != banList.end(); ++itr)
@@ -181,7 +186,7 @@ BAN_STATUS IPBanner::CalculateBanStatus(in_addr ip_address)
 					{
 						// full IP match
 						banned = true;
-						bantime = (*itr)->ban_expire_time;
+						expiretime = (*itr)->ban_expire_time;
 						break;
 					}
 				}
@@ -199,13 +204,23 @@ BAN_STATUS IPBanner::CalculateBanStatus(in_addr ip_address)
 		sLog.outDebug("[IPBanner] IP has no ban entry");
 		return BAN_STATUS_NOT_BANNED;
 	}
-	if(bantime > (uint32)time(NULL))
+	
+	if (expiretime == 0)
+	{
+		sLog.outDebug("[IPBanner] IP permanently banned");
+		return BAN_STATUS_PERMANENT_BAN;
+	}
+	
+	time_t rawtime;
+	time( &rawtime );
+	if(expiretime > (uint32)rawtime)
 	{
 		// temporary ban.
-		sLog.outDebug("[IPBanner] IP temporary banned, %u seconds left", (bantime-time(NULL)));
+		time_t expire_time = expiretime;
+		sLog.outDebug("[IPBanner] IP temporary banned, Expires: %s", ctime( &expire_time ));
 		return BAN_STATUS_TIME_LEFT_ON_BAN;
 	}
-	if(bantime)
+	if(expiretime <= (uint32)rawtime)
 	{
 		// ban has expired. erase it from the banlist and database
 		sLog.outDebug("[IPBanner] Expired IP temporary ban has been removed");
@@ -213,9 +228,9 @@ BAN_STATUS IPBanner::CalculateBanStatus(in_addr ip_address)
 		return BAN_STATUS_NOT_BANNED;
 	}
 
-	// we haven't returned, this means ip is permanantly banned.
-	sLog.outDebug("[IPBanner] IP permanantly banned");
-	return BAN_STATUS_PERMANANT_BAN;
+	// shouldnt get this far, but just in case...
+	sLog.outDebug("[IPBanner] Unknown IP ban state/duration, enforcing anyway");
+	return BAN_STATUS_PERMANENT_BAN;
 }
 
 void IPBanner::Load()
@@ -354,7 +369,11 @@ void InformationCore::SendRealms(AuthSocket * Socket)
 	data << uint8(0);
 
 	// Re-calculate size.
+#ifdef USING_BIG_ENDIAN
+	*(uint16*)&data.contents()[1] = swap16(uint16(data.size() - 3));
+#else
 	*(uint16*)&data.contents()[1] = data.size() - 3;
+#endif
 
 	// Send to the socket.
 	Socket->Send((const uint8*)data.contents(), data.size());

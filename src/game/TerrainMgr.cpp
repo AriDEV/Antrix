@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -18,21 +23,7 @@
 
 TerrainMgr::TerrainMgr(string MapPath, uint32 MapId, bool Instanced) : mapPath(MapPath), mapId(MapId), Instance(Instanced)
 {
-	// Allocate both storage arrays.
-	CellInformation = new CellTerrainInformation**[_sizeX];
-	for(uint32 x = 0; x < _sizeX; ++x)
-	{
-		CellInformation[x] = new CellTerrainInformation*[_sizeY];
-		for(uint32 y = 0; y < _sizeY; ++y)
-		{
-			// Clear the pointer.
-			CellInformation[x][y] = 0;
-			CellOffsets[x][y] = 0;
-		}
-	}
-
-	// Load the file.
-	LoadTerrainHeader();
+	CellInformation = NULL;
 }
 
 TerrainMgr::~TerrainMgr()
@@ -47,16 +38,19 @@ TerrainMgr::~TerrainMgr()
 	}
 
 	// Big memory cleanup, whee.
-	for(uint32 x = 0; x < _sizeX; ++x)
+	if(CellInformation)
 	{
-		for(uint32 y = 0; y < _sizeY; ++y)
+		for(uint32 x = 0; x < _sizeX; ++x)
 		{
-			if(CellInformation[x][y] != 0)
-				delete CellInformation[x][y];
+			for(uint32 y = 0; y < _sizeY; ++y)
+			{
+				if(CellInformation[x][y] != 0)
+					delete CellInformation[x][y];
+			}
+			delete [] CellInformation[x];
 		}
-		delete [] CellInformation[x];
+		delete CellInformation;
 	}
-	delete CellInformation;
 #else
 
 	mutex.Acquire();
@@ -107,9 +101,46 @@ bool TerrainMgr::LoadTerrainHeader()
 		return false;
 	}
 
-	// Read in the header.
-	if(fread(CellOffsets, TERRAIN_HEADER_SIZE, 1, FileDescriptor) < 1)
+	/* check file size */
+	fseek(FileDescriptor, 0, SEEK_END);
+	if(ftell(FileDescriptor) == 1048576)
+	{
+		/* file with no data */
+		fclose(FileDescriptor);
+		FileDescriptor=NULL;
 		return false;
+	}
+
+	// Read in the header.
+	fseek(FileDescriptor,0,SEEK_SET);
+	int dread = fread(CellOffsets, 1, TERRAIN_HEADER_SIZE, FileDescriptor);
+	if(dread != TERRAIN_HEADER_SIZE)
+	{
+		fclose(FileDescriptor);
+		FileDescriptor=NULL;
+		return false;
+	}
+
+	// Allocate both storage arrays.
+	CellInformation = new CellTerrainInformation**[_sizeX];
+	for(uint32 x = 0; x < _sizeX; ++x)
+	{
+		CellInformation[x] = new CellTerrainInformation*[_sizeY];
+		for(uint32 y = 0; y < _sizeY; ++y)
+		{
+			// Clear the pointer.
+			CellInformation[x][y] = 0;
+		}
+	}
+
+#ifdef USING_BIG_ENDIAN
+	uint32 x,y;
+	for(x=0;x<512;++x) {
+		for(y=0;y<512;++y) {
+			CellOffsets[x][y] = swap32(CellOffsets[x][y]);
+		}
+	}
+#endif
 
 	return true;
 
@@ -198,6 +229,24 @@ bool TerrainMgr::LoadCellInformation(uint32 x, uint32 y)
 
 		// Read from our file into this newly created struct.
 		fread(CellInformation[x][y], sizeof(CellTerrainInformation), 1, FileDescriptor);
+
+#ifdef USING_BIG_ENDIAN
+		uint32 i,j;
+		/* Swap all the data */
+
+		for(i = 0; j < 2; ++j) {
+			for(j = 0; j < 2; ++j) {
+				CellInformation[x][y]->AreaID[i][j] = swap16(CellInformation[x][y]->AreaID[i][j]);
+				CellInformation[x][y]->LiquidLevel[i][j] = swapfloat(CellInformation[x][y]->LiquidLevel[i][j]);
+			}
+		}
+
+		for(i = 0; i < 32; ++j) {
+			for(j = 0; j < 32; ++j) {
+				CellInformation[x][y]->Z[i][j] = swapfloat(CellInformation[x][y]->Z[i][j]);
+			}
+		}
+#endif
 	}
 #endif
 	// Release the mutex.

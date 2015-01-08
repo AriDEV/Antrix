@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -85,17 +90,18 @@ void CellHandler<Class>::_Init()
 	ASSERT(_cells);
 	for (uint32 i = 0; i < _sizeX; i++)
 	{
-		_cells[i] = new Class*[_sizeY];
-		ASSERT(_cells[i]);
+		//_cells[i] = new Class*[_sizeY];
+		_cells[i]=NULL;
+		//ASSERT(_cells[i]);
 	}
 
-	for (uint32 posX = 0; posX < _sizeX; posX++ )
+	/*for (uint32 posX = 0; posX < _sizeX; posX++ )
 	{
 		for (uint32 posY = 0; posY < _sizeY; posY++ )
 		{
 			_cells[posX][posY] = NULL;
 		}
-	}
+	}*/
 }
 
 template <class Class>
@@ -105,9 +111,13 @@ CellHandler<Class>::~CellHandler()
 	{
 		for (uint32 i = 0; i < _sizeX; i++)
 		{
+			if(!_cells[i])
+				continue;
+
 			for (uint32 j = 0; j < _sizeY; j++)
 			{
-				delete _cells[i][j];
+				if(_cells[i][j])
+					delete _cells[i][j];
 			}
 			delete [] _cells[i];	
 		}
@@ -118,6 +128,12 @@ CellHandler<Class>::~CellHandler()
 template <class Class>
 Class* CellHandler<Class>::Create(uint32 x, uint32 y)
 {
+	if(!_cells[x])
+	{
+		_cells[x] = new Class*[_sizeY];
+		memset(_cells[x],0,sizeof(Class*)*_sizeY);
+	}
+
 	ASSERT(_cells[x][y] == NULL);
 
 	Class *cls = new Class;
@@ -135,6 +151,7 @@ Class* CellHandler<Class>::CreateByCoords(float x, float y)
 template <class Class>
 void CellHandler<Class>::Remove(uint32 x, uint32 y)
 {
+	if(!_cells[x]) return;
 	ASSERT(_cells[x][y] != NULL);
 
 	Class *cls = _cells[x][y];
@@ -146,6 +163,7 @@ void CellHandler<Class>::Remove(uint32 x, uint32 y)
 template <class Class>
 Class* CellHandler<Class>::GetCell(uint32 x, uint32 y)
 {
+	if(!_cells[x]) return NULL;
 	return _cells[x][y];
 }
 

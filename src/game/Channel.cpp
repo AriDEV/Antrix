@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Channel System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -36,7 +41,7 @@ bool Channel::Join(Player *p, const char *pass)
 	}
 	else
 	{
-		PlayerInfo pinfo; 
+		PlayerInfo pinfo;
 		pinfo.player = p;
 		pinfo.muted = false;
 		if(GetNumPlayers() == 0)
@@ -55,7 +60,6 @@ bool Channel::Join(Player *p, const char *pass)
 
 		/*MakeYouJoined(&data,p);
 		SendToOne(&data,p);*/
-
 
 		if(owner == NULL)
 		{
@@ -385,39 +389,42 @@ void Channel::Moderate(Player *p)
 
 void Channel::Say(Player *p, const char *what, Player *t)
 {
-	WorldPacket data(100);
 	if(!IsOn(p))
 	{
+        WorldPacket data(15);
 		MakeNotOn(&data);
 		SendToOne(&data,p);
 	}
-	else if(players[p].muted)
+	else if(players[p].muted || (GetName() == "WorldDefense" && p->GetPVPRank() < 11))
 	{
+        WorldPacket data(15);
 		MakeYouCantSpeak(&data);
 		SendToOne(&data,p);
 	}
 	else if(moderate && !players[p].moderator && !p->GetSession()->CanUseCommand('c'))
 	{
+        WorldPacket data(15);
 		MakeNotModerator(&data);
 		SendToOne(&data,p);
 	}
 	else
 	{
-		//Packet structure
-		//uint8	  type;
-		//uint32	 language;
-		//uint32	 PVP rank
-		//uint64	 guid;
-		//uint32	  len_of_text;
-		//char	   text[];
-		//uint8	  afk_state;
+		//Packet    structure
+		//uint8	    type;
+		//uint32	language;
+		//uint32	PVP rank
+		//uint64	guid;
+		//uint32	len_of_text;
+		//char	    text[];
+		//uint8	    afk_state;
 
 		uint32 messageLength = strlen((char*)what) + 1;
-//		uint8 afk = 0;
+
+        WorldPacket data(40 + messageLength);
 
 		data.Initialize(SMSG_MESSAGECHAT);
-		data << (uint8)14; // CHAT_MESSAGE_CHANNEL
-		data << (uint32)0; // Universal lang
+		data << (uint8)CHAT_MSG_CHANNEL;      // CHAT_MESSAGE_CHANNEL
+		data << (uint32)0;      // Universal lang
 		data << p->GetGUID();
 		data << uint32(0);		// pvp rank??
 		data << name;
@@ -436,21 +443,23 @@ void Channel::Say(Player *p, const char *what, Player *t)
 
 void Channel::SayFromIRC(const char* msg)
 {
-	WorldPacket data;
-	//Packet structure
-	//uint8	  type;
-	//uint32	 language;
-	//uint32	 PVP rank
-	//uint64	 guid;
-	//uint32	  len_of_text;
-	//char	   text[];
-	//uint8	  afk_state;
+	
+	//Packet    structure
+	//uint8	    type;
+	//uint32	language;
+	//uint32	PVP rank
+	//uint64	guid;
+	//uint32	len_of_text;
+	//char	    text[];
+	//uint8	    afk_state;
 
+    
 	uint32 messageLength = strlen((char*)msg) + 1;
+    WorldPacket data(messageLength + 40);
 //	uint8 afk = 0;
 
 	data.Initialize(SMSG_MESSAGECHAT);
-	data << (uint8)14; // CHAT_MESSAGE_CHANNEL
+	data << (uint8)CHAT_MSG_CHANNEL; // CHAT_MESSAGE_CHANNEL
 	data << (uint32)0; // Universal lang
 	data << name.c_str();
 	data << (uint32)0; // pvp ranks
@@ -511,6 +520,9 @@ bool Channel::IsDefaultChannel()
 		)
 		return true;
 	if( !strncmp(cName, "Guild Recruitment", 17)
+		)
+		return true;
+	if( !strncmp(cName, "WorldDefense", 12)
 		)
 		return true;
 

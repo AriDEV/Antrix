@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -33,10 +38,11 @@ Object::Object() : m_position(0,0,0,0), m_spawnLocation(0,0,0,0)
 	//official Values
 	m_walkSpeed = 2.5f;
 	m_runSpeed = 7.0f;
+
 	m_flySpeed = 7.0f;
 	m_backFlySpeed = 4.5f;
 
-	m_backWalkSpeed = 2.5f;
+	m_backWalkSpeed = 4.5f;	// this should really be named m_backRunSpeed
 	m_swimSpeed = 4.722222f;
 	m_backSwimSpeed = 2.5f;
 	m_turnRate = 3.141593f;
@@ -61,10 +67,18 @@ Object::~Object( )
 		ASSERT(!m_inQueue);
 
 	if (this->IsInWorld() && m_objectTypeId != TYPEID_ITEM && m_objectTypeId != TYPEID_CONTAINER)
+	{
+#ifdef WIN32
+		CStackWalker ws;
+		OutputCrashLogLine("Object deleted while in world.");
+		ws.ShowCallstack();
+#endif
 		this->RemoveFromWorld();
+	}
 
 	// for linux
 	m_instanceId = -1;
+	m_objectTypeId=TYPEID_UNUSED;
 }
 
 
@@ -133,6 +147,12 @@ uint32 Object::BuildCreateUpdateBlockForPlayer(ByteBuffer *data, Player *target)
 						return 0;   // bad transporter
 					else
 						flags = 0x4A;
+				}break;
+
+			case GAMEOBJECT_TYPE_TRANSPORT:
+				{
+					/* deeprun tram, etc */
+					flags = 0x5A;
 				}break;
 
 			case GAMEOBJECT_TYPE_DUEL_ARBITER:
@@ -247,6 +267,20 @@ uint32 Object::BuildValuesUpdateBlockForPlayer(ByteBuffer *data, Player *target)
 	return 1;
 }
 
+uint32 Object::BuildValuesUpdateBlockForPlayer(ByteBuffer * buf, UpdateMask * mask )
+{
+	// returns: update count
+	*buf << (uint8) UPDATETYPE_VALUES;		// update type == update
+
+	ASSERT(m_wowGuid.GetNewGuidLen());
+	*buf << m_wowGuid;
+
+	_BuildValuesUpdate( buf, mask, 0 );
+
+	// 1 update.
+	return 1;
+}
+
 void Object::DestroyForPlayer(Player *target) const
 {
 	if(target->GetSession() == 0) return;
@@ -322,9 +356,9 @@ void Object::_BuildMovementUpdate(ByteBuffer * data, uint8 flags, uint32 flags2,
 	{
 		if(flags & 0x2)
 		{
-			*data << (float)0;
-			*data << (float)0;
-			*data << (float)0;
+			*data << (float)m_position.x;
+			*data << (float)m_position.y;
+			*data << (float)m_position.z;
 			*data << (float)m_position.o;
 		}
 		else
@@ -831,11 +865,14 @@ void Object::_SetUpdateBits(UpdateMask *updateMask, Player *target) const
 
 void Object::_SetCreateBits(UpdateMask *updateMask, Player *target) const
 {
-	for( uint16 index = 0; index < m_valuesCount; index++ )
+	/*for( uint16 index = 0; index < m_valuesCount; index++ )
 	{
 		if(GetUInt32Value(index) != 0)
 			updateMask->SetBit(index);
-	}
+	}*/
+	for(uint32 i = 0; i < m_valuesCount; ++i)
+		if(m_uint32Values[i] != 0)
+			updateMask->SetBit(i);
 }
 
 void Object::AddToWorld()
@@ -1014,11 +1051,16 @@ void Object::ModFloatValue(const uint32 index, const float value )
 void Object::SetUInt64Value( const uint32 index, const uint64 value )
 {
 	assert( index + 1 < m_valuesCount );
+#ifndef USING_BIG_ENDIAN
 	if(m_uint32Values[index] == GUID_LOPART(value) && m_uint32Values[index+1] == GUID_HIPART(value))
 		return;
 
 	m_uint32Values[ index ] = *((uint32*)&value);
 	m_uint32Values[ index + 1 ] = *(((uint32*)&value) + 1);
+#else
+	m_uint32Values[index] = value & 0xffffffff;
+	m_uint32Values[index+1] = (value >> 32) & 0xffffffff;
+#endif
 
 	if(IsInWorld())
 	{
@@ -1353,7 +1395,8 @@ void Object::UpdateOppFactionSet()
 
 void Object::DealDamage(Unit *pVictim, uint32 damage, uint32 targetEvent, uint32 unitEvent, uint32 spellId, bool no_remove_auras)
 {
-	if(!pVictim || !pVictim->isAlive())
+	Player * plr = 0;
+	if(!pVictim || !pVictim->isAlive() || !pVictim->IsInWorld() || !IsInWorld())
 		return;
 	if(pVictim->GetTypeId() == TYPEID_PLAYER && static_cast<Player*>(pVictim)->GodModeCheat == true)
 		return;
@@ -1398,13 +1441,13 @@ void Object::DealDamage(Unit *pVictim, uint32 damage, uint32 targetEvent, uint32
 		if(IsPlayer() && !((Player*)this)->isInCombat())
 			sHookInterface.OnEnterCombat(((Player*)this), ((Player*)this));
 
-		Player * plr = 0;
+		plr = 0;
 		if(IsPet())
 			plr = static_cast<Pet*>(this)->GetPetOwner();
 		else if(IsPlayer())
 			plr = static_cast<Player*>(this);
 
-		if(pVictim->GetTypeId()==TYPEID_UNIT && plr) // Units can't tag..
+		if(pVictim->GetTypeId()==TYPEID_UNIT && plr && plr->GetTypeId() == TYPEID_PLAYER) // Units can't tag..
 		{
 			// Tagging
 			Creature *victim = static_cast<Creature*>(pVictim);
@@ -1501,8 +1544,19 @@ void Object::DealDamage(Unit *pVictim, uint32 damage, uint32 targetEvent, uint32
 	}
 
 	//* BATTLEGROUND DAMAGE COUNTER *//
-	if(IsPlayer() && ((Player*)this)->m_bgScore != 0 && pVictim != this)
-		((Player*)this)->m_bgScore->DamageDone += damage;
+	if(pVictim != this)
+	{
+		if(IsPlayer())
+			plr = ((Player*)this);
+		else if(IsPet())
+			plr = ((Pet*)this)->GetPetOwner();
+
+		if(plr && plr->m_bg)
+		{
+			plr->m_bgScore.DamageDone += damage;
+			plr->m_bg->UpdatePvPData();
+		}
+	}
    
 	uint32 health = pVictim->GetUInt32Value(UNIT_FIELD_HEALTH );
 
@@ -1559,6 +1613,10 @@ void Object::DealDamage(Unit *pVictim, uint32 damage, uint32 targetEvent, uint32
 	/* -------------------------- HIT THAT CAUSES VICTIM TO DIE ---------------------------*/
 	if ((isCritter || health <= damage) )
 	{
+		//warlock - seed of corruption
+		pVictim->HandleProc(PROC_ON_DIE,pVictim,NULL);
+		pVictim->m_procCounter = 0;
+
 		/* victim died! */
 		if(pVictim->IsPlayer())
 			((Player*)pVictim)->KillPlayer();
@@ -1568,6 +1626,42 @@ void Object::DealDamage(Unit *pVictim, uint32 damage, uint32 targetEvent, uint32
 		if(pVictim->IsPlayer() && (!IsPlayer() || pVictim == this))
 		{
 			((Player*)pVictim)->DeathDurabilityLoss(0.10);
+		}
+
+		/* Zone Under Attack */
+        MapInfo * pMapInfo = WorldMapInfoStorage.LookupEntry(GetMapId());
+        if(pMapInfo && pMapInfo->type == INSTANCE_NULL && !pVictim->IsPlayer() && !pVictim->IsPet() 
+            && (IsPlayer() || IsPet()))
+		{
+			// Only NPCs that bear the PvP flag can be truly representing their faction.
+			if(((Creature*)pVictim)->HasFlag(UNIT_FIELD_FLAGS, U_FIELD_FLAG_PVP))
+			{
+				Player * pAttacker = NULL;
+				if(IsPet() && GetGUIDHigh() == HIGHGUID_PET)
+					pAttacker = ((Pet*)this)->GetPetOwner();
+				else if(IsPlayer())
+					pAttacker = ((Player*)this);
+
+				if(pAttacker)
+                {
+
+				    uint8 teamId = (uint8)pAttacker->GetTeam();
+				    if(teamId == 0) // Swap it.
+					    teamId = 1;
+				    else
+					    teamId = 0;
+				    uint32 AreaID = pVictim->GetMapMgr()->GetAreaID(pVictim->GetPositionX(), pVictim->GetPositionY());
+				    if(!AreaID)
+					    AreaID = pAttacker->GetZoneId(); // Failsafe for a shitty TerrainMgr
+
+				    if(AreaID)
+				    {
+					    WorldPacket data(SMSG_ZONE_UNDER_ATTACK, 4);
+					    data << AreaID;
+					    sWorld.SendFactionMessage(&data, teamId);
+				    }
+                }
+			}
 		}
 		
 		if(pVictim->GetUInt64Value(UNIT_FIELD_CHANNEL_OBJECT) > 0)
@@ -1671,58 +1765,40 @@ void Object::DealDamage(Unit *pVictim, uint32 damage, uint32 targetEvent, uint32
 			}
 		}
 		/* -------------------------------- HONOR + BATTLEGROUND CHECKS ------------------------ */
-		if(this->IsPlayer())		// Honor System Checks
+		plr = 0;
+		if(IsPlayer())
+			plr = ((Player*)this);
+		else if(IsPet())
+			plr = ((Pet*)this)->GetPetOwner();
+		
+		if(plr)
 		{
-			if(pVictim->IsPlayer() && ((Player*)pVictim)->GetCurrentBattleground() != NULL && ((Player*)this)->GetCurrentBattleground() != NULL)
-			{
-				if(((Player*)pVictim)->m_bgInBattleground)
-				{					
-					pVictim->SetFlag(UNIT_FIELD_FLAGS,U_FIELD_FLAG_SKINNABLE);
+			if(plr->m_bg != 0)
+				plr->m_bg->HookOnPlayerKill(plr, pVictim);
 
-					// set loot
-					pVictim->loot.gold = rand() % 150 + 50;
-				}
-
-				if(((Player*)pVictim)->GetCurrentBattleground()->GetMapId() == 489)
-					((Player*)pVictim)->GetCurrentBattleground()->HandleBattlegroundEvent(this, pVictim, BGEVENT_WSG_PLAYER_KILL);
-				else if(((Player*)pVictim)->GetCurrentBattleground()->GetMapId() == 529)
-					((Player*)pVictim)->GetCurrentBattleground()->HandleBattlegroundEvent(this, pVictim, BGEVENT_AB_PLAYER_KILL);
-				else if(((Player*)pVictim)->GetCurrentBattleground()->GetMapId() == 30)
-					((Player*)pVictim)->GetCurrentBattleground()->HandleBattlegroundEvent(this, pVictim, BGEVENT_AV_PLAYER_KILL);
-			}
-			else if( pVictim->IsUnit() && ((Player*)this)->GetCurrentBattleground() != NULL )
-			{
-				
-				if(pVictim->GetEntry() == 11946) // Horde General Drek'Thar
-						((Player*)this)->GetCurrentBattleground()->HandleBattlegroundEvent(this, pVictim, BGEVENT_AV_GENERAL_DEAD_HORDE);
-				else if(pVictim->GetEntry() == 11948) // Alliance General Vanndar Stormpike
-						((Player*)this)->GetCurrentBattleground()->HandleBattlegroundEvent(this, pVictim, BGEVENT_AV_GENERAL_DEAD_ALLIANCE);
-				
-			}
-			
 			if(pVictim->IsPlayer())
 			{
-				sHookInterface.OnKillPlayer(((Player*)this), ((Player*)pVictim));
-				if(((Unit*)this)->getLevel() > pVictim->getLevel())
+				sHookInterface.OnKillPlayer(plr, ((Player*)pVictim));
+				if(plr->getLevel() > pVictim->getLevel())
 				{
-					unsigned int diff = ((Unit*)this)->getLevel() - pVictim->getLevel();
+					unsigned int diff = plr->getLevel() - pVictim->getLevel();
 					if(diff <= 8)
 					{
-						HonorHandler::OnPlayerKilledUnit(static_cast<Player*>(this), pVictim);
+						HonorHandler::OnPlayerKilledUnit(plr, pVictim);
 						SetFlag(UNIT_FIELD_AURASTATE,AURASTATE_FLAG_LASTKILLWITHHONOR);
 					}
 					else RemoveFlag(UNIT_FIELD_AURASTATE,AURASTATE_FLAG_LASTKILLWITHHONOR);
 				}
 				else
 				{
-					HonorHandler::OnPlayerKilledUnit(static_cast<Player*>(this), pVictim);
+					HonorHandler::OnPlayerKilledUnit(plr, pVictim);
 					SetFlag(UNIT_FIELD_AURASTATE,AURASTATE_FLAG_LASTKILLWITHHONOR);
 				}
 			}
 			else
 			{
 				// REPUTATION
-				((Player*)this)->Reputation_OnKilledUnit(pVictim);
+				plr->Reputation_OnKilledUnit(pVictim, false);
 				RemoveFlag(UNIT_FIELD_AURASTATE,AURASTATE_FLAG_LASTKILLWITHHONOR);
 			}
 		}
@@ -1799,16 +1875,18 @@ void Object::DealDamage(Unit *pVictim, uint32 damage, uint32 targetEvent, uint32
 								// Loop party players and push update data.
 								GroupMembersSet::iterator itr;
 								SubGroup * sGrp;
+								pGroup->Lock();
 								for(uint32 Index = 0; Index < pGroup->GetSubGroupCount(); ++Index)
 								{
 									sGrp = pGroup->GetSubGroup(Index);
 									itr = sGrp->GetGroupMembersBegin();
 									for(; itr != sGrp->GetGroupMembersEnd(); ++itr)
 									{
-										if((*itr)->IsVisible(victim))	   // Save updates for non-existant creatures
-											(*itr)->PushUpdateData(&buf, 1);
+										if(itr->player && itr->player->IsVisible(victim))	   // Save updates for non-existant creatures
+											itr->player->PushUpdateData(&buf, 1);
 									}
 								}
+								pGroup->Unlock();
 							}break;
 						case PARTY_LOOT_MASTER:
 							{
@@ -1935,91 +2013,125 @@ void Object::DealDamage(Unit *pVictim, uint32 damage, uint32 targetEvent, uint32
 
 void Object::SpellNonMeleeDamageLog(Unit *pVictim, uint32 spellID, uint32 damage, bool allowProc,bool no_remove_auras)
 {
+//==========================================================================================
+//==============================Unacceptable Cases Processing===============================
+//==========================================================================================
 	if(!pVictim || !pVictim->isAlive())
 		return;
 
 	SpellEntry *spellInfo = sSpellStore.LookupEntry( spellID );
 	if(!spellInfo)
         return;
-	SpellCastTime *sd = sCastTime.LookupEntry(spellInfo->CastingTimeIndex);
-
-	// affect the plus damage by duration
-	float castaff = GetCastTime(sd);
-	if(castaff < 1500) castaff = 1500;
-	else
-	if(castaff > 7000) castaff = 7000;
-
-	float dmgdoneaffectperc = castaff / 3500;
- 
+//==========================================================================================
+//==============================Variables Initialization====================================
+//========================================================================================== 
 	uint32 school = spellInfo->School;
 	float res = float(damage);
 	uint32 aproc = PROC_ON_ANY_HOSTILE_ACTION;
 	uint32 vproc = PROC_ON_ANY_HOSTILE_ACTION | PROC_ON_ANY_DAMAGE_VICTIM | PROC_ON_SPELL_HIT_VICTIM;
 	bool critical = false;
-
+//==========================================================================================
+//==============================+Spell Damage Bonus Calculations============================
+//==========================================================================================
+//------------------------------by stats----------------------------------------------------
 	if(this->IsUnit())
 	{
-		static_cast<Unit*>(this)->RemoveAurasByInterruptFlag(AURA_INTERRUPT_ON_START_ATTACK);
+		Unit* caster = (Unit*)(this);
+		caster->RemoveAurasByInterruptFlag(AURA_INTERRUPT_ON_START_ATTACK);
+		int32 plus_damage = 0;
 		
-		if(IsPlayer())
+		if(caster->IsPlayer())
 		{
-			res += static_cast<Player*>(this)->SpellDmgDoneByInt[school] * this->GetUInt32Value(UNIT_FIELD_STAT3);
-			res += static_cast<Player*>(this)->SpellDmgDoneBySpr[school] * this->GetUInt32Value(UNIT_FIELD_STAT4);
+			plus_damage += static_cast<Player*>(caster)->SpellDmgDoneByInt[school] * caster->GetUInt32Value(UNIT_FIELD_STAT3);
+			plus_damage += static_cast<Player*>(caster)->SpellDmgDoneBySpr[school] * caster->GetUInt32Value(UNIT_FIELD_STAT4);
 		}
-		
-		int32 plus_damage = static_cast<Unit*>(this)->GetDamageDoneMod(school);
+//------------------------------by school---------------------------------------------------
+		plus_damage += caster->GetDamageDoneMod(school);
+		plus_damage += pVictim->DamageTakenMod[school];
+//------------------------------by victim type----------------------------------------------
+		if(((Creature*)pVictim)->GetCreatureName() && caster->IsPlayer()&& !pVictim->IsPlayer())
+			plus_damage += static_cast<Player*>(caster)->IncreaseDamageByType[((Creature*)pVictim)->GetCreatureName()->Type];
+//==========================================================================================
+//==============================+Spell Damage Bonus Modifications===========================
+//==========================================================================================
+//------------------------------by cast duration--------------------------------------------
+		SpellCastTime *sd = sCastTime.LookupEntry(spellInfo->CastingTimeIndex);
+		float castaff = GetCastTime(sd);
+		if(castaff < 1500) castaff = 1500;
+		else
+			if(castaff > 7000) castaff = 7000;
 
-		if(((Creature*)pVictim)->GetCreatureName() && IsPlayer()&& !pVictim->IsPlayer())
-			plus_damage += static_cast<Player*>(this)->IncreaseDamageByType[((Creature*)pVictim)->GetCreatureName()->Type];
+		if (spellInfo->NameHash == 0xddaf1ac7) //Mage: Ice Lance should take only 1/7 +spell damage bonus
+			castaff = 500;
 
-
+		float dmgdoneaffectperc = castaff / 3500;
+//==========================================================================================
+//==============================Bonus Adding To Main Damage=================================
+//==========================================================================================
 		int32 bonus_damage = float2int32(plus_damage * dmgdoneaffectperc);
+		bonus_damage +=pVictim->DamageTakenMod[school];
 		if(spellInfo->SpellGroupType)
 		{
-			SM_FIValue(static_cast<Unit*>(this)->SM_FPenalty, &bonus_damage, spellInfo->SpellGroupType);
+			SM_FIValue(caster->SM_FPenalty, &bonus_damage, spellInfo->SpellGroupType);
 			res += bonus_damage;
 
 			int32 ures = (int32)res;
-			SM_FIValue(static_cast<Unit*>(this)->SM_FDamageBonus, &ures, spellInfo->SpellGroupType);
-			SM_PIValue(static_cast<Unit*>(this)->SM_PDamageBonus, &ures, spellInfo->SpellGroupType);
+			SM_FIValue(caster->SM_FDamageBonus, &ures, spellInfo->SpellGroupType);
+			SM_PIValue(caster->SM_PDamageBonus, &ures, spellInfo->SpellGroupType);
 			res = (float)ures;
 		}
 		else
 		{
 			res += bonus_damage;
 		}
-
-
+//==========================================================================================
+//==============================Post +SpellDamage Bonus Modifications=======================
+//==========================================================================================
 		if(res < 0)
 			res = 0;
 		else
 		{
-			res *= static_cast<Unit*>(this)->GetDamageDonePctMod(school) * pVictim->DamageTakenPctMod[school];
-			res += float(pVictim->DamageTakenMod[school]);
-			if(res < 0) res = 0;	
-			float CritChance = static_cast<Unit*>(this)->spellcritperc + static_cast<Unit*>(this)->SpellCritChanceSchool[school] + pVictim->AttackerSpellCritChanceMod[school];
+//------------------------------by school----------------------------------------------
+			float summaryPCTmod = caster->GetDamageDonePctMod(school);
+			summaryPCTmod += pVictim->DamageTakenPctMod[school]-1;
+			if (caster->DamageDoneModPCT[school])
+				summaryPCTmod += caster->DamageDoneModPCT[school];
+			res *= summaryPCTmod;
 
-			if (this->IsPlayer()&&(pVictim->m_rooted-pVictim->m_stunned))	
-				CritChance += static_cast<Player*>(this)->m_RootedCritChanceBonus;
+//------------------------------critical strike chance--------------------------------------	
+			float CritChance = caster->spellcritperc + caster->SpellCritChanceSchool[school] + pVictim->AttackerSpellCritChanceMod[school];
+			if (caster->IsPlayer()&&(pVictim->m_rooted-pVictim->m_stunned))	
+				CritChance += static_cast<Player*>(caster)->m_RootedCritChanceBonus;
 
 			if(spellInfo->SpellGroupType)
-				SM_FFValue(static_cast<Unit*>(this)->SM_CriticalChance, &CritChance, spellInfo->SpellGroupType);
+				SM_FFValue(caster->SM_CriticalChance, &CritChance, spellInfo->SpellGroupType);
+			if (pVictim->IsPlayer())
+				CritChance -=static_cast<Player*>(pVictim)->CalcRating(14);
+			if (CritChance<0) CritChance = 0;
 
 			critical = Rand(CritChance);
-
-			if (critical) //Spell Crictical Hit
+//==========================================================================================
+//==============================Spell Critical Hit==========================================
+//==========================================================================================
+			if (critical)
 			{		
-				//int32 dmgbonus = 0;
-				//if(spellInfo->SpellGroupType)
-					//SM_FIValue(static_cast<Unit*>(this)->SM_PCriticalDamage, &dmgbonus, spellInfo->SpellGroupType);
-
-			   // res *= 1.5f;
 				float b = res/2;
-
 				if(spellInfo->SpellGroupType)
-					SM_PFValue(static_cast<Unit*>(this)->SM_PCriticalDamage, &b, spellInfo->SpellGroupType);
-
+					SM_PFValue(caster->SM_PCriticalDamage, &b, spellInfo->SpellGroupType);
 				res += b;
+				if (pVictim->IsPlayer())
+				{
+//					res = res*(1.0f-2.0f*static_cast<Player*>(pVictim)->CalcRating(14));
+					//Resilience is a special new rating which was created to reduce the effects of critical hits against your character.
+					//It has two components; it reduces the chance you will be critically hit by x%, 
+					//and it reduces the damage dealt to you by critical hits by 2x%. x is the percentage resilience granted by a given resilience rating. 
+					//It is believed that resilience also functions against spell crits, 
+					//though it's worth noting that NPC mobs cannot get critical hits with spells.
+					float dmg_reduction_pct=2*static_cast<Player*>(pVictim)->CalcRating(14)/100;
+					if(dmg_reduction_pct>1.0f)
+						dmg_reduction_pct = 1.0f; //we cannot resist more then he is criticalling us, there is no point of the critical then :P
+					res=float2int32(res - res*dmg_reduction_pct);
+				}
 
 				pVictim->Emote(EMOTE_ONESHOT_WOUNDCRITICAL);
 				aproc |= PROC_ON_SPELL_CRIT_HIT;
@@ -2027,40 +2139,56 @@ void Object::SpellNonMeleeDamageLog(Unit *pVictim, uint32 spellID, uint32 damage
 			}
 		}
 	}
+//==========================================================================================
+//==============================Post Roll Calculations======================================
+//==========================================================================================
+	//dirty fix for Ice Lance
+	if ((pVictim->m_rooted -pVictim->m_stunned)>0 && spellInfo->NameHash == 0xddaf1ac7) //Ice Lance deals 3x damage if target is frozen
+	{
+		res *=3;
+	}
+//------------------------------absorption--------------------------------------------------	
 	uint32 ress=(uint32)res;
 	uint32 abs_dmg = pVictim->AbsorbDamage(school, &ress);
+	uint32 ms_abs_dmg= pVictim->ManaShieldAbsorb(ress);
+	if (ms_abs_dmg)
+	{
+		ress-=ms_abs_dmg;
+		abs_dmg += ms_abs_dmg;
+	}
+
 	res=(float)ress;
 	dealdamage dmg;
 	dmg.damage_type = school;
-	// ress above is typecasted to float, comming from int, going to int down here..... jesus
-	//dmg.full_damage = res;
 	dmg.full_damage = ress;
 	dmg.resisted_damage = 0;
-	// make it say resisted :p
-	if(res == 0)
+	if(res <= 0)
 		dmg.resisted_damage = dmg.full_damage = 1;
-	
+//------------------------------resistance reducing-----------------------------------------	
 	if(this->IsUnit())
 	{
 		static_cast<Unit*>(this)->CalculateResistanceReduction(pVictim,&dmg);
 		res = dmg.full_damage - dmg.resisted_damage;
 	}
-
+//------------------------------special states----------------------------------------------
 	if(pVictim->GetTypeId() == TYPEID_PLAYER && static_cast<Player*>(pVictim)->GodModeCheat == true)
 	{
 		res = dmg.full_damage;
 		dmg.resisted_damage = dmg.full_damage;
 	}
-
 	//DK:FIXME->SplitDamage
 	
-	// Send spell log
+//==========================================================================================
+//==============================Data Sending ProcHandling===================================
+//==========================================================================================
 	SendSpellNonMeleeDamageLog(this, pVictim, spellID, float2int32(res), school, abs_dmg, dmg.resisted_damage, false, 0, critical, IsPlayer());
 	
 	if(this->IsUnit() && allowProc && spellInfo->Id != 25501)
 	{
 		static_cast<Unit*>(this)->HandleProc(aproc,pVictim,spellInfo, float2int32(res));
+		static_cast<Unit*>(this)->m_procCounter = 0;
 		pVictim->HandleProc(vproc,(Unit*)this,spellInfo, float2int32(res));
+		pVictim->m_procCounter = 0;
 	}
 	
 	DealDamage(pVictim, float2int32(res),  2, 0, spellID);
@@ -2068,7 +2196,32 @@ void Object::SpellNonMeleeDamageLog(Unit *pVictim, uint32 spellID, uint32 damage
 	if (pVictim->GetCurrentSpell())
 		pVictim->GetCurrentSpell()->AddTime(school);
 
-	
+//==========================================================================================
+//==============================Post Damage Processing======================================
+//==========================================================================================
+	if (dmg.resisted_damage==dmg.full_damage && !abs_dmg)
+	{		//Magic Absorption
+		if (pVictim->IsPlayer())
+		{
+			if (static_cast<Player*>(pVictim)->m_RegenManaOnSpellResist)
+			{
+				Player* pl = (Player*)pVictim;
+				uint32 curmana = pl->GetUInt32Value(UNIT_FIELD_POWER1);
+				uint32 maxmana = pl->GetUInt32Value(UNIT_FIELD_MAXPOWER1);
+				curmana+=uint32(float( float(maxmana)*pl->m_RegenManaOnSpellResist));
+				
+				static_cast<Player*>(pVictim)->SetUInt32Value(UNIT_FIELD_POWER1,(curmana >= maxmana) ? maxmana : curmana);
+
+				WorldPacket datamr(SMSG_HEALMANASPELL_ON_PLAYER, 30);
+				datamr << pVictim->GetNewGUID();
+				datamr << pVictim->GetNewGUID();
+				datamr << uint32(29442);
+				datamr << uint32(0);
+				datamr << uint32(float( float(maxmana)*pl->m_RegenManaOnSpellResist));
+				((Player*)pVictim)->GetSession()->SendPacket(&datamr);
+			}
+		}
+	}
 	if(school == SHADOW_DAMAGE)
 	{
                 //VampiricEmbrace
@@ -2082,6 +2235,16 @@ void Object::SpellNonMeleeDamageLog(Unit *pVictim, uint32 spellID, uint32 damage
 		{
 			if(static_cast<Unit*>(this)->isAlive())
 				static_cast<Unit*>(this)->VampiricTouch(float2int32(res), pVictim);
+		}
+		if (pVictim->isAlive()&&this->IsUnit())
+		{    //Shadow Word:Death
+			if (spellID==32379||spellID==32996) 
+			{
+				uint32 damage = (uint32)res;
+				uint32 absorbed = static_cast<Unit*>(this)->AbsorbDamage(school,&damage);
+				DealDamage((Unit*)this,damage,2,0,spellID);
+				SendSpellNonMeleeDamageLog(this,this,spellID,damage,school,absorbed,0,false,0,false,this->IsPlayer());
+			}
 		}
 	}
 }

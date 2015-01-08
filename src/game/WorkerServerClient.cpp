@@ -1,3 +1,22 @@
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
 #include "StdAfx.h"
 #ifdef CLUSTERING
 
@@ -28,14 +47,40 @@ void WSClient::OnRead()
 		if(_remaining && GetReadBufferSize() < _remaining)
 			break;
 
+		if(_cmd == ISMSG_WOW_PACKET)
+		{
+			/* optimized version for packet passing, to reduce latency! ;) */
+			uint32 sid = *(uint32*)&m_readBuffer[0];
+			uint16 op  = *(uint16*)&m_readBuffer[4];
+			uint32 sz  = *(uint32*)&m_readBuffer[6];			
+			WorldSession * session = sClusterInterface.GetSession(sid);
+			if(session != NULL)
+			{
+				WorldPacket * pck = new WorldPacket(op, sz);
+				pck->resize(sz);
+				memcpy((void*)pck->contents(), &m_readBuffer[10], sz);
+				session->QueuePacket(pck);
+			}
+			RemoveReadBufferBytes(sz + 10/*header*/, false);
+			_cmd = 0;
+			continue;
+		}
+
 		WorldPacket * pck = new WorldPacket(_cmd, _remaining);
 		_cmd = 0;
 		pck->resize(_remaining);
 		Read(_remaining, (uint8*)pck->contents());
 
 		/* we could handle auth here */
-		printf("Got packet from RS: %u\n", pck->GetOpcode());
-		sClusterInterface.QueuePacket(pck);
+		switch(_cmd)
+		{
+		case ISMSG_AUTH_REQUEST:
+			sClusterInterface.HandleAuthRequest(*pck);
+			delete pck;
+			break;
+		default:
+			sClusterInterface.QueuePacket(pck);
+		}		
 	}
 }
 

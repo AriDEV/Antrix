@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -381,13 +386,28 @@ void Player::UpdateInrangeSetsBasedOnReputation()
 	}
 }
 
-void Player::Reputation_OnKilledUnit(Unit * pUnit)
+void Player::Reputation_OnKilledUnit(Unit * pUnit, bool InnerLoop)
 {
 	// add rep for on kill
-	/*if(pUnit->m_factionDBC->RepListId < 0)
-		return;*/
 	if(pUnit->GetTypeId() != TYPEID_UNIT || pUnit->IsPet())
 		return;
+
+	if(!InnerLoop && m_Group)
+	{
+		/* loop the rep for group members */
+		m_Group->getLock().Acquire();
+		GroupMembersSet::iterator it;
+		for(uint32 i = 0; i < m_Group->GetSubGroupCount(); ++i)
+		{
+			for(it = m_Group->GetSubGroup(i)->GetGroupMembersBegin(); it != m_Group->GetSubGroup(i)->GetGroupMembersEnd(); ++it)
+			{
+				if(it->player)
+					it->player->Reputation_OnKilledUnit(pUnit, true);
+			}
+		}
+		m_Group->getLock().Release();
+		return;
+	}
 
 	int team = GetTeam();
 	ReputationModifier * modifier = objmgr.GetReputationModifier(pUnit->GetEntry(), pUnit->m_factionDBC->ID);
@@ -414,6 +434,9 @@ void Player::Reputation_OnKilledUnit(Unit * pUnit)
 	else
 	{
 		if(IS_INSTANCE(GetMapId()) && objmgr.HandleInstanceReputationModifiers(this, pUnit))
+			return;
+
+		if(pUnit->m_factionDBC->RepListId < 0)
 			return;
 
 		// decrease rep by 5.

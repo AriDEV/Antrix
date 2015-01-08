@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Item System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -231,7 +236,7 @@ bool ItemInterface::m_AddItem(Item *item, int8 ContainerSlot, int8 slot)
 					item->PushToWorld(m_pOwner->GetMapMgr());
 					ByteBuffer buf(2500);
 					uint32 count = item->BuildCreateUpdateBlockForPlayer( &buf, m_pOwner );
-					m_pOwner->PushUpdateData(&buf, count);
+					m_pOwner->PushCreationData(&buf, count);
 				}
 				m_pOwner->SetUInt64Value(PLAYER_FIELD_INV_SLOT_HEAD + (slot*2), item->GetGUID());
 			}
@@ -268,7 +273,7 @@ bool ItemInterface::m_AddItem(Item *item, int8 ContainerSlot, int8 slot)
 		if(VisibleBase > PLAYER_VISIBLE_ITEM_19_0)
 		{
 			printf("Slot warning: slot: %d\n", slot);
-			Crash_Log->AddFormat("Slot warning: slot: %d\n", slot);
+			OutputCrashLogLine("Slot warning: slot: %d\n", slot);
 		}
 		else
 		{
@@ -320,6 +325,13 @@ Item *ItemInterface::SafeRemoveAndRetreiveItemFromSlot(int8 ContainerSlot, int8 
 		pItem = GetInventoryItem(ContainerSlot,slot);
 
 		if (pItem == NULL) { return NULL; }
+
+		if(pItem->GetProto()->ContainerSlots > 0 && ((Container*)pItem)->HasItems())
+		{
+			/* sounds weird? no. this will trigger a callstack display due to my other debug code. */
+			pItem->DeleteFromDB();
+			return false;
+		}
 
 		m_pItems[(int)slot] = NULL;
 		pItem->m_isDirty = true;
@@ -470,6 +482,13 @@ bool ItemInterface::SafeFullRemoveItemFromSlot(int8 ContainerSlot, int8 slot)
 		Item *pItem = GetInventoryItem(slot);
 
 		if (pItem == NULL) { return false; }
+
+		if(pItem->GetProto()->ContainerSlots > 0 && ((Container*)pItem)->HasItems())
+		{
+			/* sounds weird? no. this will trigger a callstack display due to my other debug code. */
+			pItem->DeleteFromDB();
+			return false;
+		}
 
 		m_pItems[(int)slot] = NULL;
 		pItem->m_isDirty = true;
@@ -831,6 +850,13 @@ uint32 ItemInterface::RemoveItemAmt(uint32 id, uint32 amt)
 		{
 			if(item->GetEntry() == id)
 			{
+				if(item->GetProto()->ContainerSlots > 0 && ((Container*)item)->HasItems())
+				{
+					/* sounds weird? no. this will trigger a callstack display due to my other debug code. */
+					item->DeleteFromDB();
+					continue;
+				}
+
 				if (item->GetUInt32Value(ITEM_FIELD_STACK_COUNT) > amt)
 				{
 					item->SetCount(item->GetUInt32Value(ITEM_FIELD_STACK_COUNT) - amt);
@@ -1249,7 +1275,7 @@ int8 ItemInterface::CanEquipItemInSlot(int8 DstInvSlot, int8 slot, ItemPrototype
 	}*/
 
 		if(proto->RequiredSkill)
-			if (proto->RequiredSkillRank > m_pOwner->GetSkillAmt(proto->RequiredSkill))
+			if (proto->RequiredSkillRank > m_pOwner->_GetSkillLineCurrent(proto->RequiredSkill,true))
 				return INV_ERR_SKILL_ISNT_HIGH_ENOUGH;
 
 		// You are dead !
@@ -1371,7 +1397,7 @@ int8 ItemInterface::CanEquipItemInSlot(int8 DstInvSlot, int8 slot, ItemPrototype
 					{
 						if(mainweapon->GetProto()->InventoryType != INVTYPE_2HWEAPON)
 						{
-							if(m_pOwner->HasSkillLine(SKILL_DUAL_WIELD))
+							if(m_pOwner->_HasSkillLine(SKILL_DUAL_WIELD))
 								return 0;
 							else
 								return INV_ERR_CANT_DUAL_WIELD;
@@ -1382,7 +1408,7 @@ int8 ItemInterface::CanEquipItemInSlot(int8 DstInvSlot, int8 slot, ItemPrototype
 				}
 				else
 				{
-					if(m_pOwner->HasSkillLine(SKILL_DUAL_WIELD))
+					if(m_pOwner->_HasSkillLine(SKILL_DUAL_WIELD))
 						return 0;
 					else
 						return INV_ERR_CANT_DUAL_WIELD;
@@ -1914,7 +1940,7 @@ Item* ItemInterface::GetItemByGUID(uint64 Guid)
 //-------------------------------------------------------------------//
 void ItemInterface::BuildInventoryChangeError(Item *SrcItem, Item *DstItem, uint8 Error)
 {
-	WorldPacket data;
+	WorldPacket data(22);
 
 	data.Initialize( SMSG_INVENTORY_CHANGE_FAILURE );
 	data << Error;
@@ -1926,7 +1952,6 @@ void ItemInterface::BuildInventoryChangeError(Item *SrcItem, Item *DstItem, uint
 			data << SrcItem->GetProto()->RequiredLevel;
 		}
 	}
-
 
 	data << (SrcItem ? SrcItem->GetGUID() : uint64(0));
 	data << (DstItem ? DstItem->GetGUID() : uint64(0));
@@ -2265,13 +2290,13 @@ void ItemInterface::mLoadItemsFromDatabase()
 			{
 				if(proto->InventoryType == INVTYPE_BAG)
 				{
-					item=new Container(HIGHGUID_CONTAINER,fields[1].GetUInt64());
+					item=new Container(HIGHGUID_CONTAINER,fields[1].GetUInt32());
 					((Container*)item)->LoadFromDB(fields);
 
 				}
 				else
 				{
-					item = new Item(HIGHGUID_ITEM,fields[1].GetUInt64());
+					item = new Item(HIGHGUID_ITEM,fields[1].GetUInt32());
 					item->LoadFromDB(fields, m_pOwner, false);
 
 				}
@@ -2574,3 +2599,13 @@ void ItemInterface::ReduceItemDurability()
    }
 }
 
+bool ItemInterface::IsEquipped(uint32 itemid)
+{
+	for(uint32 x = EQUIPMENT_SLOT_START; x < EQUIPMENT_SLOT_END; ++x)
+	{
+		if(m_pItems[x])
+			if(m_pItems[x]->GetProto()->ItemId == itemid)
+				return true;
+	}
+	return false;
+}

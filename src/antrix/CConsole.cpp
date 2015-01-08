@@ -1,3 +1,21 @@
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 
 #include "CConsole.h"
 #include "Log.h"
@@ -5,44 +23,58 @@
 #include "../game/StdAfx.h"
 #include "../shared/svn_revision.h"
 
+#ifndef WIN32
+    #include <termios.h>
+#endif
 
+createFileSingleton(Console);
 createFileSingleton(CConsole);
-CConsole::~CConsole()
+void CConsole::Kill()
 {
-	if(running_link)
-		*running_link = false;
-	if(_thread)
-		delete _thread;
+#ifdef WIN32
+	/* write the return keydown/keyup event */
+	DWORD dwTmp;
+	INPUT_RECORD ir[2];
+	ir[0].EventType = KEY_EVENT;
+	ir[0].Event.KeyEvent.bKeyDown = TRUE;
+	ir[0].Event.KeyEvent.dwControlKeyState = 288;
+	ir[0].Event.KeyEvent.uChar.AsciiChar = 13;
+	ir[0].Event.KeyEvent.wRepeatCount = 1;
+	ir[0].Event.KeyEvent.wVirtualKeyCode = 13;
+	ir[0].Event.KeyEvent.wVirtualScanCode = 28;
+	ir[1].EventType = KEY_EVENT;
+	ir[1].Event.KeyEvent.bKeyDown = FALSE;
+	ir[1].Event.KeyEvent.dwControlKeyState = 288;
+	ir[1].Event.KeyEvent.uChar.AsciiChar = 13;
+	ir[1].Event.KeyEvent.wRepeatCount = 1;
+	ir[1].Event.KeyEvent.wVirtualKeyCode = 13;
+	ir[1].Event.KeyEvent.wVirtualScanCode = 28;
+	_thread->kill=true;
+	WriteConsoleInput (GetStdHandle(STD_INPUT_HANDLE), ir, 2, & dwTmp);
+	printf("Waiting for console thread to terminate....\n");
+	while(_thread != NULL)
+	{
+		Sleep(100);
+	}
+	printf("Console shut down.\n");
+#endif
 }
-
 void CConsoleThread::run()
 {
 	SetThreadName("Console Interpreter");
-	CThread::run();
 	sCConsole._thread = this;
-	delete_after_use = false;
 	size_t i = 0;
 	char cmd[96];
-    bool running = true;
-	sCConsole.running_link = &running;	
 
-	while (ThreadState != THREADSTATE_TERMINATE && running)
+	while (kill != true)
 	{
-		if(ThreadState == THREADSTATE_PAUSED)
-		{
-			while(ThreadState == THREADSTATE_PAUSED)
-			{
-				Sleep(200);
-			}
-		}
-		
 		// Make sure our buffer is clean to avoid Array bounds overflow
 		memset(cmd,0,sizeof(cmd)); 
 		// Read in single line from "stdin"
 		fgets(cmd, 80, stdin);
 
-		if(!running || ThreadState == THREADSTATE_TERMINATE)
-			return;
+		if(kill)
+			break;
 
 		for( i = 0 ; i < 80 || cmd[i] != '\0' ; i++ )
 		{
@@ -55,6 +87,7 @@ void CConsoleThread::run()
 			}
 		}
 	}
+	sCConsole._thread=NULL;
 }
 
 //------------------------------------------------------------------------------
@@ -66,13 +99,12 @@ void CConsole::ProcessCmd(char *cmd)
 	typedef void (CConsole::*PTranslater)(char *str);
 	struct SCmd
 	{
-		char *name;
+		const char *name;
 		PTranslater tr;
 	};
 
 	SCmd cmds[] =
 	{
-
 		{ "?", &CConsole::TranslateHelp}, { "help", &CConsole::TranslateHelp},
 		{ "ver", &CConsole::TranslateVersion}, { "version", &CConsole::TranslateVersion},
 		{ "uptime", &CConsole::GetUptime},
@@ -86,14 +118,11 @@ void CConsole::ProcessCmd(char *cmd)
 		{ "kick", &CConsole::Kick},
 		{ "banaccount", &CConsole::BanAccount},
 		{ "banip", &CConsole::IPBan},
+		{ "unbanip", &CConsole::IPUnBan},
 		{ "playerinfo", &CConsole::PlayerInfo},
+		{ "reloadscripts", &CConsole::ReloadGMScripts},
 	};
 
-	if(_thread->GetThreadState() == THREADSTATE_TERMINATE)
-	{
-		printf("Exit confirmed. \n");
-		return;
-	}
 	char cmd2[80];
 	strcpy(cmd2, cmd);
 	for(size_t i = 0; i < strlen(cmd); ++i)
@@ -175,17 +204,18 @@ void CConsole::ProcessHelp(char *command)
 		sLog.outString("   saveall: saves all players");
 		sLog.outString("   kick: kicks a player with a reason");
 		sLog.outString("   banaccount: bans an account");
-		sLog.outString("   banip: bans an ip");
+		sLog.outString("   banip <address> [duration]: bans an ip");
+		sLog.outString("   unbanip <address>: unbans an ip");
 		sLog.outString("   playerinfo: gets info on an online player");
+		sLog.outString("   reloadscripts: reloads gamemonkey scripts");
 		sLog.outString("   quit, exit: close program");
 	}
 }
 //------------------------------------------------------------------------------
 
-CConsoleThread::CConsoleThread() : CThread()
+CConsoleThread::CConsoleThread()
 {
-	ThreadType = THREADTYPE_CONSOLEINTERFACE;
-	delete_after_use = false;
+	kill=false;
 }
 
 void CConsole::TranslateThreads(char* str)
@@ -225,9 +255,67 @@ void CConsole::BanAccount(char* str)
 
 void CConsole::IPBan(char* str)
 {
-	sLogonCommHandler.LogonDatabaseSQLExecute("INSERT INTO ipbans (ip, time) VALUES ('%s', '0')", str);
-	sLog.outString("IP %s banned!", str);
+	char ip[16] = {0};		// IPv4 address
+	uint32 dLength = 0;		// duration of ban, 0 = permanent
+	char dType = {0};		// duration type, defaults to minutes ( see convTimePeriod() )
+
+	// we require at least one argument, the network address to ban
+	if ( sscanf(str, "%15s %u%c", ip, (unsigned int*)&dLength, &dType) < 1 )
+	{
+		sLog.outString("usage: banip <address> [duration]");
+		return;
+	}
+
+	uint32 o1, o2, o3, o4;
+	if ( sscanf(ip, "%3u.%3u.%3u.%3u", (unsigned int*)&o1, (unsigned int*)&o2, (unsigned int*)&o3, (unsigned int*)&o4) != 4
+			|| o1 > 255 || o2 > 255 || o3 > 255 || o4 > 255)
+	{
+		sLog.outString("Invalid IPv4 address [%s]", ip);
+		return;
+	}
+
+	time_t expire_time;
+	if ( dLength == 0)		// permanent ban
+		expire_time = 0;
+	else
+	{
+		time_t dPeriod = convTimePeriod(dLength, dType);
+		if ( dPeriod == 0)
+		{
+			sLog.outString("Invalid ban duration");
+			return;
+		}
+		time( &expire_time );
+		expire_time += dPeriod;
+	}
+
+	sLog.outString("Adding [%s] to IP ban table, expires: %s", ip, (expire_time == 0)? "Never" : ctime( &expire_time ));
+	sLogonCommHandler.LogonDatabaseSQLExecute("REPLACE INTO ipbans VALUES ('%s', %u);", WorldDatabase.EscapeString(ip).c_str(), (uint32)expire_time);
 	sLogonCommHandler.LogonDatabaseReloadAccounts();
+}
+
+void CConsole::IPUnBan(char* str)
+{
+	char ip[16] = {0};		// IPv4 address
+
+	// we require at least one argument, the network address to unban
+	if ( sscanf(str, "%15s", ip) < 1)
+	{
+		sLog.outString("usage: unbanip <address>");
+		return;
+	}
+
+	/**
+	 * We can afford to be less fussy with the validty of the IP address given since
+	 * we are only attempting to remove it.
+	 * Sadly, we can only blindly execute SQL statements on the logonserver so we have
+	 * no idea if the address existed and so the account/IPBanner cache requires reloading.
+	 */
+
+	sLog.outString("Removing [%s] from IP ban table if it exists", ip);
+	sLogonCommHandler.LogonDatabaseSQLExecute("DELETE FROM ipbans WHERE ip = '%s';", WorldDatabase.EscapeString(ip).c_str());
+	sLogonCommHandler.LogonDatabaseReloadAccounts();
+	return;
 }
 
 void CConsole::PlayerInfo(char* str)
@@ -308,7 +396,7 @@ void CConsole::WideAnnounce(char *str)
 
 void CConsole::SaveallPlayers(char *str)
 {
-	HM_NAMESPACE::hash_map<uint32, Player*>::const_iterator itr;
+	PlayerStorageMap::const_iterator itr;
 	uint32 stime = now();
 	uint32 count = 0;
 	objmgr._playerslock.AcquireReadLock();
@@ -325,4 +413,125 @@ void CConsole::SaveallPlayers(char *str)
 	snprintf(msg, 100, "Saved all %d online players in %d msec.", (unsigned int)count, (unsigned int)((uint32)now() - stime));
 	sWorld.SendWorldText(msg);
 	sWorld.SendWorldWideScreenText(msg);
+}
+
+void CConsole::ReloadGMScripts(char * str)
+{
+	ScriptSystem->Reload();
+}
+
+static char ConsoleBuffer[65536];
+
+const char * Console::GetLine(uint32 Delay)
+{
+	if(PollConsole(Delay))
+	{
+#ifdef WIN32
+		DWORD Bytes_Read;
+		DWORD Result = ReadFile(GetStdHandle(STD_INPUT_HANDLE), ConsoleBuffer, 65536, &Bytes_Read, NULL);
+		if(Bytes_Read != 0 && Result)
+			return ConsoleBuffer;
+		else
+			return NULL;
+#else
+		struct termios initial_settings, new_settings;
+        	tcgetattr(0,&initial_settings);
+        	tcgetattr(0,&new_settings);
+       		new_settings.c_lflag &= ~ICANON;
+        	new_settings.c_lflag &= ~ECHO;
+       		new_settings.c_lflag &= ~ISIG;
+	        tcsetattr(0,TCSANOW,&new_settings);
+
+		int br = read(fileno(stdin), ConsoleBuffer, 65536);
+        	tcsetattr(0,TCSANOW,&initial_settings);
+
+		if(br != 0)
+			return ConsoleBuffer;
+#endif
+	}
+	return NULL;
+}
+
+bool Console::PollConsole(uint32 Time)
+{
+	/* This is platform-dependant, unfortunately due to window's gayness of treating file descriptors differently. */
+#ifndef WIN32
+	fd_set fds;
+	timeval tv;
+
+	struct termios initial_settings, new_settings;
+	tcgetattr(0,&initial_settings);
+	tcgetattr(0,&new_settings);
+	new_settings.c_lflag &= ~ICANON;
+	new_settings.c_lflag &= ~ECHO;
+	new_settings.c_lflag &= ~ISIG;
+	tcsetattr(0,TCSANOW,&new_settings);
+	
+	FD_ZERO(&fds);
+	FD_SET(fileno(stdin), &fds);
+	
+	tv.tv_sec  = Time / 1000;
+	tv.tv_usec = (Time % 1000) * 1000;
+
+	int result = select(1, &fds, NULL, NULL, &tv);
+	tcsetattr(0,TCSANOW,&initial_settings);
+	if(result > 0)
+		return true;
+	else
+		return false;
+#else
+	uint32 e = getMSTime() + Time;
+	uint32 n = getMSTime();
+	while(n < e)
+	{
+        if(GetAsyncKeyState(VK_RETURN) != 0)
+			return true;
+
+		Sleep(100);
+	}
+	return false;
+#endif
+}
+
+bool Console::PollForD()
+{
+#ifndef WIN32
+	const char * buf = GetLine(1000);
+	if(!buf || buf[0] != 27)
+		return false;
+	return true;
+#else
+	uint32 e = getMSTime() + 1000;
+	uint32 n = getMSTime();
+	while(n < e)
+	{
+		if(GetAsyncKeyState(VK_F1) != 0)
+			return true;
+
+		Sleep(100);
+		n = getMSTime();
+	}
+	return false;
+#endif
+}
+
+bool Console::WaitForSpace()
+{
+#ifndef WIN32
+	const char * buf = GetLine(100000);
+	if(buf && buf[0] != ' ')
+		WaitForSpace();
+
+	return true;
+
+#else
+	while(true)
+	{
+		if(GetAsyncKeyState(VK_SPACE) != 0)
+			return true;
+
+		Sleep(100);
+	}
+	return false;
+#endif
 }

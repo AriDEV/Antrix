@@ -1,19 +1,25 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Packet Handler File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "StdAfx.h"
 #define SWIMMING_TOLERANCE_LEVEL -0.08f
+#define MOVEMENT_PACKET_TIME_DELAY 50
 
 void WorldSession::HandleMoveWorldportAckOpcode( WorldPacket & recv_data )
 {
@@ -33,14 +39,36 @@ void WorldSession::HandleMoveWorldportAckOpcode( WorldPacket & recv_data )
 
 void WorldSession::HandleMoveTeleportAckOpcode( WorldPacket & recv_data )
 {
-	sLog.outDebug( "WORLD: got MSG_MOVE_TELEPORT_ACK." );
-	GetPlayer()->SetPlayerStatus(NONE);
-	GetPlayer()->clearAttackers(true);
-	GetPlayer()->SetMovement(MOVE_UNROOT,5);
-	_player->ResetHeartbeatCoords();
+	uint64 guid;
+	recv_data >> guid;
+	if(guid == _player->GetGUID())
+	{
+		if(sWorld.antihack_teleport && !(HasGMPermissions() && sWorld.no_antihack_on_gm) && _player->GetPlayerStatus() != TRANSFER_PENDING)
+		{
+			/* we're obviously cheating */
+			sCheatLog.writefromsession(this, "Used teleport hack, disconnecting.");
+			Disconnect();
+			return;
+		}
 
-	if(GetPlayer()->GetSummon() != NULL)		// move pet too
-		GetPlayer()->GetSummon()->SetPosition((GetPlayer()->GetPositionX() + 2), (GetPlayer()->GetPositionY() + 2), GetPlayer()->GetPositionZ(), M_PI);
+		if(sWorld.antihack_teleport && !(HasGMPermissions() && sWorld.no_antihack_on_gm) && _player->m_position.Distance2DSq(_player->m_sentTeleportPosition) > 625.0f)	/* 25.0f*25.0f */
+		{
+			/* cheating.... :( */
+			sCheatLog.writefromsession(this, "Used teleport hack {2}, disconnecting.");
+			Disconnect();
+			return;
+		}
+
+		sLog.outDebug( "WORLD: got MSG_MOVE_TELEPORT_ACK." );
+		GetPlayer()->SetPlayerStatus(NONE);
+		GetPlayer()->clearAttackers(true);
+		GetPlayer()->SetMovement(MOVE_UNROOT,5);
+		_player->ResetHeartbeatCoords();
+
+		if(GetPlayer()->GetSummon() != NULL)		// move pet too
+			GetPlayer()->GetSummon()->SetPosition((GetPlayer()->GetPositionX() + 2), (GetPlayer()->GetPositionY() + 2), GetPlayer()->GetPositionZ(), M_PI);
+		_player->m_sentTeleportPosition.ChangeCoords(999999.0f,999999.0f,999999.0f);
+	}
 
 }
 
@@ -85,21 +113,51 @@ void WorldSession::HandleMovementOpcodes( WorldPacket & recv_data )
 		return;
 	}
 
+	if(sWorld.antihack_teleport && !(HasGMPermissions() && sWorld.no_antihack_on_gm) && _player->m_position.Distance2DSq(movement_info.x, movement_info.y) > 2500.0f && _player->m_runSpeed < 50.0f)	/*50*50*/
+	{
+		sCheatLog.writefromsession(this, "Used teleport hack {3}, speed was %f", _player->m_runSpeed);
+		Disconnect();
+		return;
+	}
+
+	if(sWorld.antihack_flight && !(HasGMPermissions() && sWorld.no_antihack_on_gm) && !_player->FlyCheat && movement_info.flags & MOVEFLAG_FLYING && !(movement_info.flags & MOVEFLAG_FALLING))
+	{
+		sCheatLog.writefromsession(this, "Used flying hack {1}, movement flags: %u", movement_info.flags);
+		Disconnect();
+		return;
+	}
+
+	if(movement_info.flags & MOVEFLAG_FALLING_FAR && !movement_info.FallTime && sWorld.antihack_falldmg && !(HasGMPermissions() && sWorld.no_antihack_on_gm) && !_player->bSafeFall && !_player->GodModeCheat)
+	{
+		sCheatLog.writefromsession(this, "Used fall damage hack, falltime is 0 and flags are %u", movement_info.flags);
+		Disconnect();
+		return;
+	}
+
 	uint32 pos = m_MoverWoWGuid.GetNewGuidLen() + 1;
+	uint32 mstime = getMSTime();
+	int32 new_move_time = (MOVEMENT_PACKET_TIME_DELAY + (movement_info.time - mstime))+mstime;
 	memcpy(&movement_packet[pos], recv_data.contents(), recv_data.size());
-	*(uint32*)&movement_packet[pos + 4] = getMSTime();
-	_player->OutPacketToSet(recv_data.GetOpcode(), recv_data.size() + pos, movement_packet, false);
+
+	for(set<Player*>::iterator itr = _player->m_inRangePlayers.begin(); itr != _player->m_inRangePlayers.end(); ++itr)
+	{
+#ifdef USING_BIG_ENDIAN
+		*(uint32*)&movement_packet[pos+4] = swap32(new_move_time+(*itr)->GetSession()->m_moveDelayTime);
+#else
+		*(uint32*)&movement_packet[pos+4] = new_move_time+(*itr)->GetSession()->m_moveDelayTime;
+#endif
+		(*itr)->GetSession()->OutPacket(recv_data.GetOpcode(), recv_data.size() + pos, movement_packet);
+	}
 
 	//Setup Transporter Positioning
 	if(movement_info.transGuid != 0 && !_player->m_lockTransportVariables)
 	{
 		if(!_player->m_TransporterGUID)
 		{
-			GetPlayer()->m_TransporterGUID = movement_info.transGuid;
-			
 			_player->m_CurrentTransporter = objmgr.GetTransporter(movement_info.transGuid);
 			if(_player->m_CurrentTransporter)
 			{
+                GetPlayer()->m_TransporterGUID = movement_info.transGuid;
 				_player->m_CurrentTransporter->AddPlayer(_player);
 			}
 		}
@@ -146,11 +204,6 @@ void WorldSession::HandleMovementOpcodes( WorldPacket & recv_data )
 		{
 			if( !_player->SetPosition(movement_info.x, movement_info.y, movement_info.z, movement_info.orientation) )
 			{
-				/*WorldPacket * movedata = GetPlayer( )->BuildTeleportAckMsg(LocationVector(GetPlayer()->GetPositionX(),
-					GetPlayer()->GetPositionY(), GetPlayer()->GetPositionZ(), GetPlayer()->GetOrientation()) );
-
-				SendPacket(movedata);
-				delete movedata;*/
 				GetPlayer()->SetUInt32Value(UNIT_FIELD_HEALTH, 0);
 				GetPlayer()->KillPlayer();
 			}
@@ -181,9 +234,12 @@ void WorldSession::HandleMovementOpcodes( WorldPacket & recv_data )
 					uint8 type = DAMAGE_FALL;
 					//10% dmg per sec after first 3 seconds
 					//it rL a*t*t
-					double coeff = 0.0000001*_player->m_fallTime*_player->m_fallTime;
+					double coeff = 0.000000075*(_player->m_fallTime*_player->m_fallTime - _player->m_fallTime);
+					if (coeff<0)
+						coeff=0;
 					uint32 damage = (uint32)(_player->GetUInt32Value(UNIT_FIELD_MAXHEALTH)*coeff);
-					// if(damage > GetPlayer()->GetUInt32Value(UNIT_FIELD_MAXHEALTH)) { damage = GetPlayer()->GetUInt32Value(UNIT_FIELD_MAXHEALTH); }
+					if(damage > GetPlayer()->GetUInt32Value(UNIT_FIELD_MAXHEALTH)) // Can only deal 100% damage.
+						damage = GetPlayer()->GetUInt32Value(UNIT_FIELD_MAXHEALTH);
 
 					WorldPacket data(13);
 					data.SetOpcode(SMSG_ENVIRONMENTALDAMAGELOG);
@@ -207,22 +263,22 @@ void WorldSession::HandleMovementOpcodes( WorldPacket & recv_data )
 		}
 	}
 
-	// speedhack protection
+	//// speedhack protection
 	if(sWorld.SpeedhackProtection && GetPermissionCount() == 0 && !_player->blinked)
 		_SpeedCheck(movement_info);
 }
 
 void WorldSession::HandleMoveStopOpcode( WorldPacket & recv_data )
 {	
-	GetPlayer()->m_isMoving = false;	   
 	HandleMovementOpcodes( recv_data );
+	_player->m_isMoving = false;
 }
 
 void WorldSession::HandleMoveTimeSkippedOpcode( WorldPacket & recv_data )
 {
-	//uint64 guid;
-	//uint32 time_in_ms;
-	//recv_data >> guid >> time_in_ms;
+	uint64 guid;
+	recv_data >> guid >> m_moveDelayTime;
+	//Log.Debug("MoveTimeSkipped", "Client %s is out of sync by %u ms", GetSocket()->GetRemoteIP().c_str(), m_moveDelayTime);
 }
 
 void WorldSession::HandleMoveNotActiveMoverOpcode( WorldPacket & recv_data )
@@ -290,20 +346,51 @@ void WorldSession::HandleBasicMovementOpcodes( WorldPacket & recv_data )
 		return;
 	}
 
+	if(sWorld.antihack_teleport && !(HasGMPermissions() && sWorld.no_antihack_on_gm) && _player->m_position.Distance2DSq(movement_info.x, movement_info.y) > 2500.0f)	/*50*50*/
+	{
+		sCheatLog.writefromsession(this, "Used teleport hack {3}, speed was %f", _player->m_runSpeed);
+		Disconnect();
+		return;
+	}
+
+	if(sWorld.antihack_flight && !(HasGMPermissions() && sWorld.no_antihack_on_gm) && !_player->FlyCheat && movement_info.flags & MOVEFLAG_FLYING)
+	{
+		sCheatLog.writefromsession(this, "Used flying hack {1}, movement flags: %u", movement_info.flags);
+		Disconnect();
+		return;
+	}
+
+	if(movement_info.flags & MOVEFLAG_FALLING_FAR && !movement_info.FallTime && sWorld.antihack_falldmg && !(HasGMPermissions() && sWorld.no_antihack_on_gm) && !_player->bSafeFall && !_player->GodModeCheat)
+	{
+		sCheatLog.writefromsession(this, "Used fall damage hack, falltime is 0 and flags are %u", movement_info.flags);
+		Disconnect();
+		return;
+	}
+
 	uint32 pos = m_MoverWoWGuid.GetNewGuidLen() + 1;
+	uint32 mstime = getMSTime();
+	int32 new_move_time = (MOVEMENT_PACKET_TIME_DELAY + (movement_info.time - mstime))+mstime;
 	memcpy(&movement_packet[pos], recv_data.contents(), recv_data.size());
-	*(uint32*)&movement_packet[pos + 4] = getMSTime();
-	_player->OutPacketToSet(recv_data.GetOpcode(), recv_data.size() + pos, movement_packet, false);
+
+	for(set<Player*>::iterator itr = _player->m_inRangePlayers.begin(); itr != _player->m_inRangePlayers.end(); ++itr)
+	{
+#ifdef USING_BIG_ENDIAN
+		*(uint32*)&movement_packet[pos+4] = swap32(new_move_time+(*itr)->GetSession()->m_moveDelayTime);
+#else
+		*(uint32*)&movement_packet[pos+4] = new_move_time+(*itr)->GetSession()->m_moveDelayTime;
+#endif
+		(*itr)->GetSession()->OutPacket(recv_data.GetOpcode(), recv_data.size() + pos, movement_packet);
+	}
 
 	//Setup Transporter Positioning
 	if(movement_info.transGuid != 0 && !_player->m_lockTransportVariables)
 	{
 		if(!_player->m_TransporterGUID)
 		{
-			GetPlayer()->m_TransporterGUID = movement_info.transGuid;
 			_player->m_CurrentTransporter = objmgr.GetTransporter(movement_info.transGuid);
 			if(_player->m_CurrentTransporter)
 			{
+                GetPlayer()->m_TransporterGUID = movement_info.transGuid;
 				_player->m_CurrentTransporter->AddPlayer(_player);
 			}
 		}
@@ -349,11 +436,6 @@ void WorldSession::HandleBasicMovementOpcodes( WorldPacket & recv_data )
 		{
 			if(!GetPlayer( )->SetPosition(movement_info.x, movement_info.y, movement_info.z, movement_info.orientation) )
 			{
-				/*WorldPacket * movedata = GetPlayer( )->BuildTeleportAckMsg(LocationVector(GetPlayer()->GetPositionX(),
-					GetPlayer()->GetPositionY(), GetPlayer()->GetPositionZ(), GetPlayer()->GetOrientation()) );
-
-				SendPacket(movedata);
-				delete movedata;*/
 				GetPlayer()->SetUInt32Value(UNIT_FIELD_HEALTH, 0);
 				GetPlayer()->KillPlayer();
 			}
@@ -372,12 +454,10 @@ void WorldSession::HandleBasicMovementOpcodes( WorldPacket & recv_data )
 
 void WorldSession::_HandleBreathing(WorldPacket &recv_data, MovementInfo &mi)
 {
-
-	//17 lava,9 water
-
-	if(movement_info.flags & 0x200000)
-	{
-		if(!_player->m_lastMoveType)
+    //player swiming.
+    if(movement_info.flags & 0x200000)
+    {
+        if(!_player->m_lastMoveType)
 		{
             if(_player->FlyCheat)
 			{
@@ -396,8 +476,7 @@ void WorldSession::_HandleBreathing(WorldPacket &recv_data, MovementInfo &mi)
 				}
 			}
 		}
-
-		// get water level only if it was not set before
+        // get water level only if it was not set before
 		if (!m_bIsWLevelSet)
 		{
 			// water level is somewhere below the nose of the character when entering water
@@ -406,11 +485,38 @@ void WorldSession::_HandleBreathing(WorldPacket &recv_data, MovementInfo &mi)
 		}
 		if(!(_player->m_UnderwaterState & UNDERWATERSTATE_SWIMMING))
 			_player->m_UnderwaterState |= UNDERWATERSTATE_SWIMMING;
-	}
-	// make sure the swimming flag was disabled because of getting out of water
-	else if (m_bIsWLevelSet && movement_info.z > m_wLevel)
-	{
-		if(_player->m_lastMoveType)
+    }
+    if(movement_info.flags & 0x2000 && _player->m_UnderwaterState)
+    {
+        //player jumped inside water but still underwater.
+        if(m_bIsWLevelSet && (movement_info.z + _player->m_noseLevel) < m_wLevel)
+        {
+            return;
+        }
+        else
+        {
+            if(!sWorld.BreathingEnabled || _player->FlyCheat || _player->m_bUnlimitedBreath || !_player->isAlive() || _player->GodModeCheat)
+            {
+            }
+            else
+            {
+                //only swiming and can breath, stop bar
+                if(_player->m_UnderwaterState & UNDERWATERSTATE_UNDERWATER)
+		        {
+			        WorldPacket data(SMSG_START_MIRROR_TIMER, 20);
+			        data << uint32(1) << _player->m_UnderwaterTime << _player->m_UnderwaterMaxTime << uint32(10) << uint32(0);
+			        SendPacket(&data);
+
+			        _player->m_UnderwaterState &= ~UNDERWATERSTATE_UNDERWATER;
+		        }
+            }
+        }
+        return;
+    }
+    //player not swiming
+    if(!(movement_info.flags & 0x200000) && _player->m_UnderwaterState)
+    {
+        if(_player->m_lastMoveType)
 		{
 			_player->m_lastMoveType = 0;
 			_player->ResetHeartbeatCoords();
@@ -427,41 +533,47 @@ void WorldSession::_HandleBreathing(WorldPacket &recv_data, MovementInfo &mi)
 			_player->m_UnderwaterState &= ~UNDERWATERSTATE_UNDERWATER;
 
 		return;
-	}
 
-	//moved from the start of the function. Test if this changes something regarding "inwater" state
-	if(!sWorld.BreathingEnabled || _player->FlyCheat || _player->m_bUnlimitedBreath || _player->GodModeCheat)
-		return;
-
-	if(m_bIsWLevelSet && (movement_info.z + _player->m_noseLevel) < m_wLevel)
+    }
+    if(m_bIsWLevelSet && (movement_info.z + _player->m_noseLevel) < m_wLevel)
 	{
 		// underwater, w000t!
 		if(_player->m_MountSpellId)
 			_player->RemoveAura(_player->m_MountSpellId);
-		
+    	
 		if(!(_player->m_UnderwaterState & UNDERWATERSTATE_UNDERWATER))
 		{
 			// we only just entered the water
 			_player->m_UnderwaterState |= UNDERWATERSTATE_UNDERWATER;
 
-			// send packet
-			WorldPacket data(SMSG_START_MIRROR_TIMER, 20);
-			data << uint32(1) << _player->m_UnderwaterTime << _player->m_UnderwaterMaxTime << int32(-1) << uint32(0);
-			SendPacket(&data);
+            if(!sWorld.BreathingEnabled || _player->FlyCheat || _player->m_bUnlimitedBreath || !_player->isAlive() || _player->GodModeCheat)
+            {
+            }
+            else
+            {
+			    // send packet
+			    WorldPacket data(SMSG_START_MIRROR_TIMER, 20);
+			    data << uint32(1) << _player->m_UnderwaterTime << _player->m_UnderwaterMaxTime << int32(-1) << uint32(0);
+			    SendPacket(&data);
+            }
 		}
 	}
-	else
-	{
-		// we're not underwater
-		if(_player->m_UnderwaterState & UNDERWATERSTATE_UNDERWATER)
+    else
+    {
+        if(_player->m_UnderwaterState & UNDERWATERSTATE_UNDERWATER)
 		{
-			WorldPacket data(SMSG_START_MIRROR_TIMER, 20);
-			data << uint32(1) << _player->m_UnderwaterTime << _player->m_UnderwaterMaxTime << uint32(10) << uint32(0);
-			SendPacket(&data);
-
+            if(!sWorld.BreathingEnabled || _player->FlyCheat || _player->m_bUnlimitedBreath || !_player->isAlive() || _player->GodModeCheat)
+            {
+            }
+            else
+            {
+			    WorldPacket data(SMSG_START_MIRROR_TIMER, 20);
+			    data << uint32(1) << _player->m_UnderwaterTime << _player->m_UnderwaterMaxTime << uint32(10) << uint32(0);
+			    SendPacket(&data);
+            }
 			_player->m_UnderwaterState &= ~UNDERWATERSTATE_UNDERWATER;
 		}
-	}
+    }
 }
 
 void WorldSession::_SpeedCheck(MovementInfo &mi)
@@ -504,7 +616,7 @@ void WorldSession::_SpeedCheck(MovementInfo &mi)
 				{
 					sChatHandler.SystemMessage(this, "Speedhack detected. This has been logged for later processing by the server admins. If you are caught again, you will be kicked from the server. You will be unrooted in 5 seconds.");
 					_player->SetMovement(MOVE_ROOT, 1);
-					sEventMgr.AddEvent(_player, &Player::SetMovement, uint8(MOVE_UNROOT), uint32(1), EVENT_DELETE_TIMER, 5000, 1);
+					sEventMgr.AddEvent(_player, &Player::SetMovement, uint8(MOVE_UNROOT), uint32(1), EVENT_DELETE_TIMER, 5000, 1,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
 					_player->ResetHeartbeatCoords();
 					_player->m_speedhackChances--;
 					
@@ -519,7 +631,7 @@ void WorldSession::_SpeedCheck(MovementInfo &mi)
 					sCheatLog.writefromsession(this, "Kicked for speedhack, time diff of %u", difference);
 
 					_player->m_KickDelay = 0;
-					sEventMgr.AddEvent(_player, &Player::_Kick, EVENT_PLAYER_KICK, 10000, 1);
+					sEventMgr.AddEvent(_player, &Player::_Kick, EVENT_PLAYER_KICK, 10000, 1,0);
 
 					// Root movement :p heheheh evil
 					_player->SetMovement(MOVE_ROOT, 1);

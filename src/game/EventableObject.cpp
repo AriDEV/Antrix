@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -51,17 +56,26 @@ void EventableObject::event_AddEvent(TimedEvent * ptr)
 
 	ptr->IncRef();
 	ptr->instanceId = m_event_Instanceid;
-	m_events.insert( EventMap::value_type( ptr->eventFlags, ptr ) );
+	pair<uint32,TimedEvent*> p(ptr->eventType, ptr);
+	m_events.insert( p );
 	m_lock.Release();
 
 	/* Add to event manager */
+	if(!m_holder)
+	{
+		/* relocate to -1 eventholder :/ */
+		m_event_Instanceid = -1;
+		m_holder = sEventMgr.GetEventHolder(m_event_Instanceid);
+		ASSERT(m_holder);
+	}
+
 	m_holder->AddEvent(ptr);
 }
 
 void EventableObject::event_RemoveByPointer(TimedEvent * ev)
 {
 	m_lock.Acquire();
-	EventMap::iterator itr = m_events.find(ev->eventFlags);
+	EventMap::iterator itr = m_events.find(ev->eventType);
 	EventMap::iterator it2;
 	if(itr != m_events.end())
 	{
@@ -78,7 +92,7 @@ void EventableObject::event_RemoveByPointer(TimedEvent * ev)
 				return;
 			}
 
-		} while(itr != m_events.upper_bound(ev->eventFlags));
+		} while(itr != m_events.upper_bound(ev->eventType));
 	}
 	m_lock.Release();
 }
@@ -86,6 +100,12 @@ void EventableObject::event_RemoveByPointer(TimedEvent * ev)
 void EventableObject::event_RemoveEvents(uint32 EventType)
 {
 	m_lock.Acquire();
+	if(!m_events.size())
+	{
+		m_lock.Release();
+		return;
+	}
+
 	if(EventType == EVENT_REMOVAL_FLAG_ALL)
 	{
 		EventMap::iterator itr = m_events.begin();
@@ -125,6 +145,11 @@ void EventableObject::event_RemoveEvents()
 void EventableObject::event_ModifyTimeLeft(uint32 EventType, uint32 TimeLeft,bool unconditioned)
 {
 	m_lock.Acquire();
+	if(!m_events.size())
+	{
+		m_lock.Release();
+		return;
+	}
 
 	EventMap::iterator itr = m_events.find(EventType);
 	if(itr != m_events.end())
@@ -144,6 +169,11 @@ void EventableObject::event_ModifyTimeLeft(uint32 EventType, uint32 TimeLeft,boo
 void EventableObject::event_ModifyTime(uint32 EventType, uint32 Time)
 {
 	m_lock.Acquire();
+	if(!m_events.size())
+	{
+		m_lock.Release();
+		return;
+	}
 
 	EventMap::iterator itr = m_events.find(EventType);
 	if(itr != m_events.end())
@@ -161,6 +191,11 @@ void EventableObject::event_ModifyTime(uint32 EventType, uint32 Time)
 void EventableObject::event_ModifyTimeAndTimeLeft(uint32 EventType, uint32 Time)
 {
 	m_lock.Acquire();
+	if(!m_events.size())
+	{
+		m_lock.Release();
+		return;
+	}
 
 	EventMap::iterator itr = m_events.find(EventType);
 	if(itr != m_events.end())
@@ -180,6 +215,12 @@ bool EventableObject::event_HasEvent(uint32 EventType)
 {
 	bool ret = false;
 	m_lock.Acquire();
+	if(!m_events.size())
+	{
+		m_lock.Release();
+		return false;
+	}
+
 	//ret = m_events.find(EventType) == m_events.end() ? false : true;
 	EventMap::iterator itr = m_events.find(EventType);
 	if(itr != m_events.end())
@@ -245,7 +286,8 @@ void EventableObjectHolder::Update(uint32 time_difference)
 	{
 		it2 = itr++;
 
-		if((*it2)->instanceId != mInstanceId || (*it2)->deleted)
+		if((*it2)->instanceId != mInstanceId || (*it2)->deleted || 
+			( mInstanceId == WORLD_INSTANCE && (*it2)->eventFlag & EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT))
 		{
 			// remove from this list.
 			(*it2)->DecRef();
@@ -311,7 +353,13 @@ void EventableObject::event_Relocate()
 		
 		// no need to do this if we don't have any events, though.
 		if(m_events.size())
+		{
+			/* shitty sanity check. xUdd sucks. */
+			if(!nh)
+				nh = sEventMgr.GetEventHolder(-1);
+
 			nh->AddObject(this);
+		}
 
 		// reset our m_holder pointer and instance id
 		m_event_Instanceid = nh->GetInstanceID();
@@ -337,10 +385,18 @@ uint32 EventableObject::event_GetEventPeriod(uint32 EventType)
 void EventableObjectHolder::AddEvent(TimedEvent * ev)
 {
 	// m_lock NEEDS TO BE A RECURSIVE MUTEX
-	m_lock.Acquire();
 	ev->IncRef();
-	m_events.push_back( ev );
-	m_lock.Release();
+	if(!m_lock.AttemptAcquire())
+	{
+		m_insertPoolLock.Acquire();
+		m_insertPool.push_back( ev );
+		m_insertPoolLock.Release();
+	}
+	else
+	{
+		m_events.push_back( ev );
+		m_lock.Release();
+	}
 }
 
 void EventableObjectHolder::AddObject(EventableObject * obj)
@@ -364,6 +420,9 @@ void EventableObjectHolder::AddObject(EventableObject * obj)
 				continue;
 			}
 
+			if(mInstanceId == WORLD_INSTANCE && itr->second->eventFlag & EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT)
+				continue;
+
 			itr->second->IncRef();
 			itr->second->instanceId = mInstanceId;
 			m_insertPool.push_back(itr->second);
@@ -380,6 +439,9 @@ void EventableObjectHolder::AddObject(EventableObject * obj)
 	{
 		// ignore deleted events
 		if(itr->second->deleted)
+			continue;
+
+		if(mInstanceId == WORLD_INSTANCE && itr->second->eventFlag & EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT)
 			continue;
 
 		itr->second->IncRef();

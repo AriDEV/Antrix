@@ -131,6 +131,7 @@
     <ClCompile Include="..\..\src\game\CharacterHandler.cpp" />
     <ClCompile Include="..\..\src\game\Chat.cpp" />
     <ClCompile Include="..\..\src\game\ChatHandler.cpp" />
+    <ClCompile Include="..\..\src\game\ClusterInterface.cpp" />
     <ClCompile Include="..\..\src\game\CombatHandler.cpp" />
     <ClCompile Include="..\..\src\game\Container.cpp" />
     <ClCompile Include="..\..\src\game\Corpse.cpp" />
@@ -141,6 +142,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
       </PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="..\..\src\game\DatabaseCleaner.cpp">
     <ClCompile Include="..\..\src\game\debugcmds.cpp" />
     <ClCompile Include="..\..\src\game\DuelHandler.cpp" />
     <ClCompile Include="..\..\src\game\DynamicObject.cpp" />
@@ -210,6 +212,8 @@
     <ClCompile Include="..\..\src\game\WarsongGulch.cpp" />
     <ClCompile Include="..\..\src\game\WayPoints.cpp" />
     <ClCompile Include="..\..\src\game\WeatherMgr.cpp" />
+    <ClCompile Include="..\..\src\game\WorkdSoketCluster.cpp" />
+    <ClCompile Include="..\..\src\game\WorkerServerClient.cpp" />
     <ClCompile Include="..\..\src\game\World.cpp" />
     <ClCompile Include="..\..\src\game\WorldCreator.cpp" />
     <ClCompile Include="..\..\src\game\WorldRunnable.cpp" />
@@ -229,13 +233,16 @@
     <ClInclude Include="..\..\src\game\AuctionHouse.h" />
     <ClInclude Include="..\..\src\game\AuctionMgr.h" />
     <ClInclude Include="..\..\src\game\BattlegroundMgr.h" />
+    <ClInclude Include="..\..\src\game\CellHandler.h" />
     <ClInclude Include="..\..\src\game\Channel.h" />
     <ClInclude Include="..\..\src\game\ChannelMgr.h" />
     <ClInclude Include="..\..\src\game\Chat.h" />
+    <ClInclude Include="..\..\src\game\ClusterInterface.h" />
     <ClInclude Include="..\..\src\game\Container.h" />
     <ClInclude Include="..\..\src\game\Corpse.h" />
     <ClInclude Include="..\..\src\game\Creature.h" />
     <ClInclude Include="..\..\src\game\CThreads.h" />
+    <ClInclude Include="..\..\src\game\DatabaseCleaner.h" />
     <ClInclude Include="..\..\src\game\DynamicObject.h" />
     <ClInclude Include="..\..\src\game\EventableObject.h" />
     <ClInclude Include="..\..\src\game\EventMgr.h" />
@@ -257,6 +264,7 @@
     <ClInclude Include="..\..\src\game\MapCell.h" />
     <ClInclude Include="..\..\src\game\MapMgr.h" />
     <ClInclude Include="..\..\src\game\MapScriptInterface.h" />
+    <ClInclude Include="..\..\src\game\MiscHandler.h" />
     <ClInclude Include="..\..\src\game\NameTables.h" />
     <ClInclude Include="..\..\src\game\NPCHandler.h" />
     <ClInclude Include="..\..\src\game\Object.h" />
@@ -269,6 +277,7 @@
     <ClInclude Include="..\..\src\game\Quest.h" />
     <ClInclude Include="..\..\src\game\QuestMgr.h" />
     <ClInclude Include="..\..\src\game\ScriptMgr.h" />
+    <ClInclude Include="..\..\src\game\Skill.h" />
     <ClInclude Include="..\..\src\game\SocialMgr.h" />
     <ClInclude Include="..\..\src\game\Spell.h" />
     <ClInclude Include="..\..\src\game\SpellAuras.h" />
@@ -284,6 +293,7 @@
     <ClInclude Include="..\..\src\game\UpdateMask.h" />
     <ClInclude Include="..\..\src\game\WarsongGulch.h" />
     <ClInclude Include="..\..\src\game\WeatherMgr.h" />
+    <ClInclude Include="..\..\src\game\WorkerServerClient.h" />
     <ClInclude Include="..\..\src\game\World.h" />
     <ClInclude Include="..\..\src\game\WorldCreator.h" />
     <ClInclude Include="..\..\src\game\WorldRunnable.h" />

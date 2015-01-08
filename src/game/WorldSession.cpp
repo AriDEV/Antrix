@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -23,7 +28,7 @@
 OpcodeHandler WorldPacketHandlers[NUM_MSG_TYPES];
 
 WorldSession::WorldSession(uint32 id, string Name, WorldSocket *sock) : _player(0), _socket(sock), _accountId(id), _accountName(Name),
-_logoutTime(0), permissions(NULL), permissioncount(0), _loggingOut(false), instanceId(0), packetThrottleTimeout(0), packetThrottleCount(0)
+_logoutTime(0), permissions(NULL), permissioncount(0), _loggingOut(false), instanceId(0)
 {
 	memset(movement_packet, 0, sizeof(movement_packet));
 	m_currMsTime = getMSTime();
@@ -31,6 +36,8 @@ _logoutTime(0), permissions(NULL), permissioncount(0), _loggingOut(false), insta
 	m_bIsWLevelSet = false;
 	floodLines = 0;
 	floodTime = World::UNIXTIME;
+	_updatecount = 0;
+	m_moveDelayTime=0;
 
 	for(uint32 x=0;x<8;x++)
 		sAccountData[x].data=NULL;	
@@ -58,9 +65,6 @@ WorldSession::~WorldSession()
 	WorldPacket *packet;
 
 	while((packet = _recvQueue.Pop()))
-		delete packet;
-
-	while((packet = _throttledQueue.Pop()))
 		delete packet;
 
 	for(uint32 x=0;x<8;x++)
@@ -100,6 +104,9 @@ int WorldSession::Update(uint32 InstanceID)
 			// Abort..
 			return 0;
 		}
+
+		if(_player && _player->DuelingWith)
+			_player->EndDuel(DUEL_WINNER_RETREAT);
 
 		bDeleted = true;
 		LogoutPlayer(true);
@@ -161,6 +168,9 @@ int WorldSession::Update(uint32 InstanceID)
 			return 0;
 		}
 
+		if(_player && _player->m_Group)
+			_player->m_Group->RemovePlayer(_player->m_playerInfo, _player, true);
+
 		LogoutPlayer(true);
 	}
 
@@ -183,8 +193,12 @@ int WorldSession::Update(uint32 InstanceID)
 		return 1;
 	}
 
+#ifndef CLUSTERING
 	// 0 - OK!
-	/*UpdateThrottledPackets();*/
+	if(!((++_updatecount) % 2) && _socket)
+		_socket->UpdateQueuedPackets();
+#endif
+
 	return 0;
 }
 
@@ -236,6 +250,12 @@ void WorldSession::LogoutPlayer(bool Save)
 		else
 			sWorld.AlliancePlayers--;
 
+		if(_player->m_bg)
+			_player->m_bg->RemovePlayer(_player, true);
+
+		if(_player->m_bgIsQueued)
+			BattlegroundManager.RemovePlayerFromQueues(_player);
+
 		// send info
 		sWorld.BroadcastExtendedMessage(0, "[SM:INFO:%u:%u]", sWorld.HordePlayers, sWorld.AlliancePlayers);
 
@@ -265,20 +285,8 @@ void WorldSession::LogoutPlayer(bool Save)
 
 		_player->GetItemInterface()->EmptyBuyBack();
 		
-		
-		// Remove from BG
-		if(_player->GetCurrentBattleground() != NULL)
-		{
-			_player->GetCurrentBattleground()->RemovePlayer(_player, false, false, false);
-		}
-		
 		// Remove ourself from a group
-		if (_player->InGroup())
-		{
-			Group *group = _player->GetGroup();
-			if(group)
-				group->RemovePlayer(_player);
-		}
+		Group * group = _player->GetGroup();
 		
 		for(int i=0;i<3;++i)
 		{
@@ -304,6 +312,11 @@ void WorldSession::LogoutPlayer(bool Save)
 		  if(_player->IsInWorld())
 			_player->RemoveFromWorld();
 		
+		  if(group)
+		  {
+			  group->RemovePlayer(_player->m_playerInfo, NULL, false);
+			  _player->m_Group =NULL;
+		  }
 	  
 		// Remove the "player locked" flag, to allow movement on next login
 		if ( GetPlayer( )->GetUInt32Value(UNIT_FIELD_FLAGS) & U_FIELD_FLAG_LOCK_PLAYER )
@@ -522,7 +535,7 @@ void WorldSession::InitPacketHandlerTable()
 	WorldPacketHandlers[CMSG_MOVE_TIME_SKIPPED].handler						 = &WorldSession::HandleMoveTimeSkippedOpcode;
 	WorldPacketHandlers[CMSG_MOVE_NOT_ACTIVE_MOVER].handler					 = &WorldSession::HandleMoveNotActiveMoverOpcode;
 	WorldPacketHandlers[CMSG_SET_ACTIVE_MOVER].handler						  = &WorldSession::HandleSetActiveMoverOpcode;
-	
+    WorldPacketHandlers[CMSG_TRANSPORT_STEP_IN_OUT].handler                         = &WorldSession::HandleMovementOpcodes;
 	// ACK
 	WorldPacketHandlers[MSG_MOVE_TELEPORT_ACK].handler						  = &WorldSession::HandleMoveTeleportAckOpcode;
 	WorldPacketHandlers[CMSG_FORCE_WALK_SPEED_CHANGE_ACK].handler			   = &WorldSession::HandleAcknowledgementOpcodes;
@@ -537,6 +550,7 @@ void WorldSession::InitPacketHandlerTable()
 	WorldPacketHandlers[CMSG_FORCE_MOVE_UNROOT_ACK].handler					 = &WorldSession::HandleAcknowledgementOpcodes;
 	WorldPacketHandlers[CMSG_MOVE_KNOCK_BACK_ACK].handler					   = &WorldSession::HandleAcknowledgementOpcodes;
 	WorldPacketHandlers[CMSG_MOVE_HOVER_ACK].handler							= &WorldSession::HandleAcknowledgementOpcodes;
+	WorldPacketHandlers[MSG_MOVE_FLY_DOWN_UNK].handler							= &WorldSession::HandleMovementOpcodes;
 	
 	// Action Buttons
 	WorldPacketHandlers[CMSG_SET_ACTION_BUTTON].handler						 = &WorldSession::HandleSetActionButtonOpcode;
@@ -825,6 +839,7 @@ void WorldSession::InitPacketHandlerTable()
 	WorldPacketHandlers[CMSG_TOGGLE_CLOAK].handler							  = &WorldSession::HandleToggleCloakOpcode;
 	WorldPacketHandlers[CMSG_TOGGLE_HELM].handler							   = &WorldSession::HandleToggleHelmOpcode;
 	WorldPacketHandlers[CMSG_SET_VISIBLE_RANK].handler							= &WorldSession::HandleSetVisibleRankOpcode;
+	WorldPacketHandlers[CMSG_REPORT_SPAM].handler								= &WorldSession::HandleReportSpamOpcode;
 
 	WorldPacketHandlers[MSG_ADD_DYNAMIC_TARGET_OBSOLETE].handler				= &WorldSession::HandleAddDynamicTargetOpcode;
 
@@ -866,51 +881,9 @@ void SessionLogWriter::writefromsession(WorldSession* session, const char* forma
 	l = strlen(out);
 	vsnprintf(&out[l], 32768 - l, format, ap);
 
-	AddLine(out);
+	fprintf(m_file, "%s\n", out);
+	fflush(m_file);
 	va_end(ap);
-}
-
-bool WorldSession::SendThrottledPacket(WorldPacket * packet, bool allocated)
-{
-	if(World::UNIXTIME < packetThrottleTimeout)
-	{
-		if(allocated)
-			_throttledQueue.Push(packet);
-		else
-			_throttledQueue.Push(new WorldPacket(*packet));
-
-		return false;
-	}
-
-	if(++packetThrottleCount > 15)
-	{
-		// 2 second delay between throttles
-		packetThrottleTimeout = World::UNIXTIME + 3;
-	}
-
-	SendPacket(packet);
-	return true;
-}
-
-void WorldSession::UpdateThrottledPackets()
-{
-	if(packetThrottleTimeout)
-	{
-		if(World::UNIXTIME < packetThrottleTimeout)
-			return;
-		else
-		{
-			packetThrottleCount = 0;
-			packetThrottleTimeout = 0;
-		}
-	}
-
-	WorldPacket * pck;
-	while((pck = _throttledQueue.Pop()))
-	{
-		SendPacket(pck);
-		delete pck;
-	}
 }
 
 #ifdef CLUSTERING

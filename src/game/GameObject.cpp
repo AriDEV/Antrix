@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -22,7 +27,7 @@ GameObject::GameObject(uint32 high, uint32 low)
 	m_updateMask.SetCount(GAMEOBJECT_END);
 	SetUInt32Value( OBJECT_FIELD_TYPE,TYPE_GAMEOBJECT|TYPE_OBJECT);
 	SetUInt32Value( OBJECT_FIELD_GUID,low);
-	SetUInt32Value( OBJECT_FIELD_GUID+1,high);
+	SetUInt32Value( OBJECT_FIELD_GUID+1,high);                           
 	m_wowGuid.Init(GetGUID());
  
 	SetFloatValue( OBJECT_FIELD_SCALE_X, 1);//info->Size  );
@@ -37,7 +42,7 @@ GameObject::GameObject(uint32 high, uint32 low)
 	invisibilityFlag = INVISIBILTY_FLAG_NONE;
 	spell = 0;
 	m_summoner = NULL;
-	charges = (uint32)-1;
+	charges = -1;
 	m_ritualcaster = 0;
 	m_ritualtarget = 0;
 	m_ritualmembers = NULL;
@@ -50,6 +55,8 @@ GameObject::GameObject(uint32 high, uint32 low)
 	m_spawn = 0;
 	loot.gold = 0;
 	m_deleted = false;
+	mines_remaining = 1;
+	m_respawnCell=NULL;
 }
 
 GameObject::~GameObject()
@@ -68,6 +75,9 @@ GameObject::~GameObject()
 		if(plr == m_summoner)
 			m_summoner = 0;
 	}
+
+	if(m_respawnCell!=NULL)
+		m_respawnCell->_respawnObjects.erase(this);
 
 	if (m_summonedGo && m_summoner)
 		for(int i = 0; i < 4; i++)
@@ -197,16 +207,17 @@ void GameObject::Update(uint32 p_time)
 	}
 }
 
-void GameObject::Spawn()
+void GameObject::Spawn(MapMgr * m)
 {
-	if(!this->IsInWorld())
-		AddToWorld();
-	
+	PushToWorld(m);	
 	CALL_GO_SCRIPT_EVENT(this, OnSpawn)();
 }
 
 void GameObject::Despawn(uint32 time)
 {
+	if(!IsInWorld())
+		return;
+
 	loot.items.clear();
 
 	//This is for go get deleted while looting
@@ -220,14 +231,24 @@ void GameObject::Despawn(uint32 time)
 	data << GetGUID();
 	SendMessageToSet(&data,true);
 
-	if(this->IsInWorld())
-		RemoveFromWorld();
-  
+	CALL_GO_SCRIPT_EVENT(this, OnDespawn)();
+
 	if(time)
 	{
-		sEventMgr.AddEvent(this, &GameObject::Spawn, EVENT_GAMEOBJECT_ITEM_SPAWN, time, 1);
+		/* Get our originiating mapcell */
+		MapCell * pCell = m_mapCell;
+		ASSERT(pCell);
+		pCell->_respawnObjects.insert( ((Object*)this) );
+		sEventMgr.RemoveEvents(this);
+		sEventMgr.AddEvent(m_mapMgr, &MapMgr::EventRespawnGameObject, this, pCell, EVENT_GAMEOBJECT_ITEM_SPAWN, time, 1, 0);
+		Object::RemoveFromWorld();
+		m_respawnCell=pCell;
 	}
-	CALL_GO_SCRIPT_EVENT(this, OnDespawn)();
+	else
+	{
+		Object::RemoveFromWorld();
+		ExpireAndDelete();
+	}
 }
 
 void GameObject::SaveToDB()
@@ -354,6 +375,28 @@ void GameObject::InitAI()
 		m_ritualmembers = new uint32[pInfo->SpellFocus];
 		memset(m_ritualmembers,0,sizeof(uint32)*pInfo->SpellFocus);
 	}
+    else if(pInfo->Type == GAMEOBJECT_TYPE_CHEST)
+    {
+        Lock *pLock = sLockStore.LookupEntry(GetInfo()->SpellFocus);
+        if(pLock)
+        {
+            for(uint32 i=0; i < 5; i++)
+            {
+                if(pLock->locktype[i])
+                {
+                    if(pLock->locktype[i] == 2) //locktype;
+                    {
+                        //herbalism and mining;
+                        if(pLock->lockmisc[i] == LOCKTYPE_MINING || pLock->lockmisc[i] == LOCKTYPE_HERBALISM)
+                        {
+                            mines_remaining = GetInfo()->sound4 + sRand.randInt(GetInfo()->sound5 - GetInfo()->sound4);
+                        }
+                    }
+                }
+            }
+        }
+
+    }
 
 	myScript = sScriptMgr.CreateAIScriptClassForGameObject(GetEntry(), this);
 
@@ -443,14 +486,14 @@ void GameObject::EventCloseDoor()
 void GameObject::UseFishingNode(Player *player)
 {
 	sEventMgr.RemoveEvents(this);
-	if(GetUInt32Value(GAMEOBJECT_STATE))//click on bobber before somth is hooked
+	if(GetUInt32Value(GAMEOBJECT_FLAGS) != 32)//click on bobber before somth is hooked
 	{
 		player->GetSession()->OutPacket(SMSG_FISH_NOT_HOOKED);
 		EndFishing(player,true);
 		return;
 	}
 	
-	uint32 zone=sAreaStore.LookupEntry(GetMapMgr()->GetAreaID(GetPositionX(),GetPositionY()))->ZoneId;
+	uint32 zone=/*sAreaStore.LookupEntry(GetMapMgr()->GetAreaID(GetPositionX(),GetPositionY()))->ZoneId*/player->GetZoneId();
 
 	FishingZoneEntry *entry = FishingZoneStorage.LookupEntry(zone);
 	if(entry == NULL)
@@ -463,11 +506,11 @@ void GameObject::UseFishingNode(Player *player)
 //	uint32 minskill=entry->MaxSkill;
 	uint32 minskill=entry->MinSkill;
 
-	if(player->GetBaseSkillAmt(SKILL_FISHING)<maxskill)	
-		player->AdvanceSkillLine(SKILL_FISHING);
+	if(player->_GetSkillLineCurrent(SKILL_FISHING,false)<maxskill)	
+		player->_AdvanceSkillLine(SKILL_FISHING,float2int32( 1.0f * sWorld.getRate(RATE_SKILLRATE)));
 
 	//Open loot on success, otherwise FISH_ESCAPED.
-	if(Rand(((player->GetSkillAmt(SKILL_FISHING)-minskill)*100)/maxskill))
+	if(Rand(((player->_GetSkillLineCurrent(SKILL_FISHING,true)-minskill)*100)/maxskill))
 	{			  
 		lootmgr.FillProfessionLoot(&lootmgr.FishingLoot,&loot,zone);
 		player->SendLoot(GetGUID(),3);
@@ -476,7 +519,7 @@ void GameObject::UseFishingNode(Player *player)
 	else //failed
 	{
 		player->GetSession()->OutPacket(SMSG_FISH_ESCAPED);
-		EndFishing(player,false);
+		EndFishing(player,true);
 	}
 
 }
@@ -490,30 +533,21 @@ void GameObject::EndFishing(Player* player, bool abort )
 		if(abort)   // abort becouse of a reason
 		{
 			//FIXME: here 'failed' should appear over progress bar
-			spell->cancel();
+			spell->SendChannelUpdate(0);
+			//spell->cancel();
+			spell->finish();
 		}
 		else		// spell ended
 		{
-			if (!(GetUInt32Value(GAMEOBJECT_FLAGS) & 32)) // if there was no loot
-				spell->SendCastResult(SPELL_FAILED_NO_FISH);
-
 			spell->SendChannelUpdate(0);
 			spell->finish();
-
-			/*if(this->IsInWorld())
-				RemoveFromWorld();
-			delete this;*/
-
-			ExpireAndDelete();
-			return;
 		}
 	}
-	else // if this is called, and there is no spell so remove the gameobject
-	{
-		if(this->IsInWorld())
-				RemoveFromWorld();
-		delete this;
-	}
+
+	if(!abort)
+		sEventMgr.AddEvent(this, &GameObject::ExpireAndDelete, EVENT_GAMEOBJECT_EXPIRE, 10000, 1,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
+	else
+		ExpireAndDelete();
 }
 
 void GameObject::FishHooked(Player * player)
@@ -523,8 +557,9 @@ void GameObject::FishHooked(Player * player)
 	data << GetGUID();
 	data << (uint32)(0);
 	player->GetSession()->SendPacket(&data);
-	SetUInt32Value(GAMEOBJECT_STATE, 0);
-	BuildFieldUpdatePacket(player, GAMEOBJECT_FLAGS, 32);
+	//SetUInt32Value(GAMEOBJECT_STATE, 0);
+	//BuildFieldUpdatePacket(player, GAMEOBJECT_FLAGS, 32);
+	SetUInt32Value(GAMEOBJECT_FLAGS, 32);
  }
 
 /////////////
@@ -612,7 +647,7 @@ void GameObject::ExpireAndDelete()
 	
 	/* remove any events */
 	sEventMgr.RemoveEvents(this);
-	sEventMgr.AddEvent(this, &GameObject::_Expire, EVENT_GAMEOBJECT_EXPIRE, 1, 1);
+	sEventMgr.AddEvent(this, &GameObject::_Expire, EVENT_GAMEOBJECT_EXPIRE, 1, 1,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
 }
 
 void GameObject::Deactivate()
@@ -633,9 +668,9 @@ void GameObject::OnPushToWorld()
 	ScriptSystem->OnGameObjectEvent(this, 0, GAMEOBJECT_EVENT_ON_SPAWN);
 }
 
-void GameObject::RemoveInRangeObject(Object* pObj)
+void GameObject::OnRemoveInRangeObject(Object* pObj)
 {
-	Object::RemoveInRangeObject(pObj);
+	Object::OnRemoveInRangeObject(pObj);
 	if(m_summonedGo && m_summoner == pObj)
 	{
 		for(int i = 0; i < 4; i++)
@@ -651,4 +686,14 @@ void GameObject::RemoveFromWorld()
 {
 	sEventMgr.RemoveEvents(this, EVENT_GAMEOBJECT_TRAP_SEARCH_TARGET);
 	Object::RemoveFromWorld();
+}
+
+bool GameObject::HasLoot()
+{
+    int count=0;
+    for(vector<__LootItem>::iterator itr = loot.items.begin(); itr != loot.items.end(); ++itr)
+		count += (itr)->iItemsCount;
+
+    return count;
+
 }

@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Packet Handler File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -51,7 +56,7 @@ void WorldSession::HandleTabardVendorActivateOpcode( WorldPacket & recv_data )
 void WorldSession::SendTabardHelp(Creature* pCreature)
 {
 	if(!_player->IsInWorld()) return;
-	WorldPacket data;
+	WorldPacket data(8);
 	data.Initialize( MSG_TABARDVENDOR_ACTIVATE );
 	data << pCreature->GetGUID();
 	SendPacket( &data );
@@ -76,7 +81,7 @@ void WorldSession::HandleBankerActivateOpcode( WorldPacket & recv_data )
 void WorldSession::SendBankerList(Creature* pCreature)
 {
 	if(!_player->IsInWorld()) return;
-	WorldPacket data;
+	WorldPacket data(8);
 	data.Initialize( SMSG_SHOW_BANK );
 	data << pCreature->GetGUID();
 	SendPacket( &data );
@@ -105,77 +110,114 @@ void WorldSession::SendTrainerList(Creature* pCreature)
 	if(pTrainer == 0) return;
 
 	WorldPacket data(SMSG_TRAINER_LIST, 5000);
-	
-	data << pCreature->GetGUID();
-	data << pTrainer->TrainerType;
-	data << pTrainer->SpellCount;
-
 	TrainerSpell * pSpell;
 	uint32 Spacer = 0;
-	uint32 * SpellCount = (uint32*)&data.contents()[12];
 	uint8 Status;
-	int32 RequiredLevel;
+	string Text;
 
-	for(uint32 i = 0; i < pTrainer->SpellCount; ++i)
+	data << pCreature->GetGUID();
+	data << pTrainer->TrainerType;
+
+	if(pTrainer->IsSimpleTrainer)
 	{
-		// We need the info for the teaching spell ;)
-		pSpell = pTrainer->SpellList[i];
-		RequiredLevel = pSpell->RequiredLevel;
-
-		if(pSpell->RequiredClass != -1)
+		if(	(pTrainer->Req_lvl && _player->getLevel()<pTrainer->Req_lvl) ||
+			(pTrainer->Req_rep && _player->GetStanding(pTrainer->Req_rep) < pTrainer->Req_rep_value) ||
+			(pTrainer->RequiredClass && _player->getClass() != pTrainer->RequiredClass))
 		{
-			// Check class
-			if(!(_player->getClassMask() & pSpell->RequiredClass))
+			Text = pTrainer->NoTrainMsg;
+			data << 0; //no spells for you
+			data << Text;
+		}
+		else 
+		{
+			data << pTrainer->SpellCount;
+			for(uint32 i = 0; i < pTrainer->SpellCount; ++i)
 			{
-				// Hide this spell.
+				pSpell = pTrainer->SpellList[i];
+				Status = TrainerGetSpellStatus(pSpell,false);
+				data << pSpell->TeachingSpellID;
+				data << Status;		
+				data << pSpell->Cost;
+				data << Spacer;
+				data << pSpell->IsProfession; 
+				data << (uint8)pSpell->RequiredLevel;
+				data << pSpell->RequiredSkillLine;
+				data << pSpell->RequiredSkillLineValue;
+				data << pSpell->RequiredSpell;
+				data << Spacer;//this is like a spell override or something, ex : (id=34568 or id=34547) or (id=36270 or id=34546) or (id=36271 or id=34548)
+				data << Spacer;
+			}
+
+			Text = pTrainer->TrainMsg;
+			data << Text;
+		}
+	}
+	else
+	{
+		uint32 RequiredLevel;
+		data << pTrainer->SpellCount;
+		uint32 * SpellCount = (uint32*)&data.contents()[12];
+		for(uint32 i = 0; i < pTrainer->SpellCount; ++i)
+		{
+			// We need the info for the teaching spell ;)
+			pSpell = pTrainer->SpellList[i];
+			RequiredLevel = pSpell->RequiredLevel;
+
+			if(pSpell->RequiredClass != -1)
+			{
+				// Check class
+				if(!(_player->getClassMask() & pSpell->RequiredClass))
+				{
+					// Hide this spell.
+					*SpellCount--;
+					continue;
+				}
+			}
+
+			//Dual Wield
+			if(pSpell->SpellID == 674 || pSpell->SpellID == 29651)
+			{
+				switch(_player->getClass())
+				{
+				case WARRIOR:
+				case HUNTER:
+					RequiredLevel = 20;
+					break;
+				case ROGUE:
+					RequiredLevel = 10;
+					break;
+				default:
+					RequiredLevel = uint32(-1);
+				}
+			}
+
+			Status = TrainerGetSpellStatus(pSpell);
+
+			// HACKFIX: dont show already known spells
+			if((Status == TRAINER_STATUS_ALREADY_HAVE && _player->getClass() == PALADIN) || RequiredLevel < 0)
+			{
 				*SpellCount--;
 				continue;
 			}
+
+			data << pSpell->TeachingSpellID;
+			data << Status;		
+			data << pSpell->Cost;
+			data << Spacer;
+			data << pSpell->IsProfession;
+			data << (uint8)pSpell->RequiredLevel;
+
+			data << pSpell->RequiredSkillLine;
+			data << pSpell->RequiredSkillLineValue;
+			data << pSpell->RequiredSpell;
+
+			data << Spacer;//this is like a spell owerride or something, ex : (id=34568 or id=34547) or (id=36270 or id=34546) or (id=36271 or id=34548)
+			data << Spacer;
 		}
 
-		//Dual Wield
-		if(pSpell->SpellID == 674 || pSpell->SpellID == 29651)
-		{
-			switch(_player->getClass())
-			{
-			case WARRIOR:
-			case HUNTER:
-				RequiredLevel = 20;
-				break;
-			case ROGUE:
-				RequiredLevel = 10;
-				break;
-			default:
-				RequiredLevel = -1;
-			}
-		}
-
-		Status = TrainerGetSpellStatus(pSpell);
-
-		// HACKFIX: dont show already known spells
-		if((Status == TRAINER_STATUS_ALREADY_HAVE && _player->getClass() == PALADIN) || RequiredLevel < 0)
-		{
-			*SpellCount--;
-			continue;
-		}
-
-		data << pSpell->TeachingSpellID;
-		data << Status;		
-		data << pSpell->Cost;
-		data << Spacer;
-		data << pSpell->IsProfession;
-		data << (uint8)pSpell->RequiredLevel;
-
-		data << pSpell->RequiredSkillLine;
-		data << pSpell->RequiredSkillLineValue;
-		data << pSpell->RequiredSpell;
-
-		data << Spacer << Spacer;
+		Text = pTrainer->TalkMessage;
+		data << Text;
 	}
-
-	string Text = pTrainer->TalkMessage;
-	data << Text;
-
 	SendPacket(&data);
 }
 
@@ -216,39 +258,53 @@ void WorldSession::HandleTrainerBuySpellOpcode(WorldPacket& recvPacket)
 	pCreature->CastSpell(_player, pSpell->TeachingSpellID, true);
 }
 
-
-uint8 WorldSession::TrainerGetSpellStatus(TrainerSpell* pSpell)
+uint8 WorldSession::TrainerGetSpellStatus(TrainerSpell* pSpell,bool oldtrainer)
 {
-	// check player's lavel
-	if(pSpell->RequiredLevel && _player->getLevel() < pSpell->RequiredLevel)
-		return TRAINER_STATUS_NOT_LEARNABLE;
+	if(oldtrainer==false)
+	{
+		if(	(pSpell->RequiredLevel && _player->getLevel()<pSpell->RequiredLevel)
+			|| (pSpell->RequiredSpell && !_player->HasSpell(pSpell->RequiredSpell))
+			|| (pSpell->Cost && _player->GetUInt32Value(PLAYER_FIELD_COINAGE) < pSpell->Cost)
+			|| (pSpell->RequiredSkillLine && _player->_GetSkillLineCurrent(pSpell->RequiredSkillLine,false) < pSpell->RequiredSkillLineValue)
+			|| (pSpell->IsProfession && !_player->_HasSkillLine(pSpell->RequiredSkillLine) && _player->GetUInt32Value(PLAYER_CHARACTER_POINTS2) == 0) )
+			return TRAINER_STATUS_NOT_LEARNABLE;
+		if(	_player->GetMaxLearnedSpellLevel(pSpell->TeachSpellID)>= pSpell->SpellRank)
+			return TRAINER_STATUS_ALREADY_HAVE;
+		return TRAINER_STATUS_LEARNABLE;
+	}
+	else
+	{
+		// check player's lavel
+		if(pSpell->RequiredLevel && _player->getLevel() < pSpell->RequiredLevel)
+			return TRAINER_STATUS_NOT_LEARNABLE;
 
-	// check if we need a skill line
-	if(pSpell->RequiredSkillLine && !_player->HasSkillLine( pSpell->RequiredSkillLine ) )
-		return TRAINER_STATUS_NOT_LEARNABLE;
+		// check if we need a skill line
+		if(pSpell->RequiredSkillLine && !_player->_HasSkillLine( pSpell->RequiredSkillLine ) )
+			return TRAINER_STATUS_NOT_LEARNABLE;
 
-	// check if we have the required value
-	if(pSpell->RequiredSkillLineValue && pSpell->RequiredSkillLine &&
-		_player->GetBaseSkillAmt( pSpell->RequiredSkillLine ) < pSpell->RequiredSkillLineValue )
-		return TRAINER_STATUS_NOT_LEARNABLE;
+		// check if we have the required value
+		if(pSpell->RequiredSkillLineValue && pSpell->RequiredSkillLine &&
+			_player->_GetSkillLineCurrent( pSpell->RequiredSkillLine,false ) < pSpell->RequiredSkillLineValue )
+			return TRAINER_STATUS_NOT_LEARNABLE;
 
-	// check if we already have this spell
-	if(_player->HasSpell( pSpell->SpellID ) || _player->HasDeletedSpell(pSpell->SpellID) )	// Check deleted here too.)
-		return TRAINER_STATUS_ALREADY_HAVE;
+		// check if we already have this spell
+		if(_player->HasSpell( pSpell->SpellID ) || _player->HasDeletedSpell(pSpell->SpellID) )	// Check deleted here too.)
+			return TRAINER_STATUS_ALREADY_HAVE;
 
-	// check if we have a required spell
-	if(pSpell->RequiredSpell && !_player->HasSpell( pSpell->RequiredSpell))
-		return TRAINER_STATUS_NOT_LEARNABLE;
+		// check if we have a required spell
+		if(pSpell->RequiredSpell && !_player->HasSpell( pSpell->RequiredSpell))
+			return TRAINER_STATUS_NOT_LEARNABLE;
 
-	// check if we have the $$$
-	if(pSpell->Cost && _player->GetUInt32Value(PLAYER_FIELD_COINAGE) < pSpell->Cost)
-		return TRAINER_STATUS_NOT_LEARNABLE;
+		// check if we have the $$$
+		if(pSpell->Cost && _player->GetUInt32Value(PLAYER_FIELD_COINAGE) < pSpell->Cost)
+			return TRAINER_STATUS_NOT_LEARNABLE;
 
-	// see if we passed the profession limit
-	if(pSpell->IsProfession && !_player->HasSkillLine(pSpell->RequiredSkillLine) && pSpell->TeachingLine && _player->GetUInt32Value(PLAYER_CHARACTER_POINTS2) == 0)
-		return TRAINER_STATUS_NOT_LEARNABLE;
+		// see if we passed the profession limit
+		if(pSpell->IsProfession && !_player->_HasSkillLine(pSpell->RequiredSkillLine) && pSpell->TeachingLine && _player->GetUInt32Value(PLAYER_CHARACTER_POINTS2) == 0)
+			return TRAINER_STATUS_NOT_LEARNABLE;
 
-	return TRAINER_STATUS_LEARNABLE;
+		return TRAINER_STATUS_LEARNABLE;
+	}
 }
 
 //////////////////////////////////////////////////////////////
@@ -269,7 +325,7 @@ void WorldSession::HandleCharterShowListOpcode( WorldPacket & recv_data )
 void WorldSession::SendCharterRequest(Creature* pCreature)
 {
 	if(!_player->IsInWorld()) return;
-	WorldPacket data;
+	WorldPacket data(29);
 	data.Initialize( SMSG_PETITION_SHOWLIST );
 	data << pCreature->GetGUID();
 	data << uint8(1);		   // BOOL SHOW_COST = 1
@@ -338,7 +394,7 @@ void WorldSession::HandleGossipHelloOpcode( WorldPacket & recv_data )
 	// reputation
 	_player->Reputation_OnTalk(qst_giver->m_factionDBC);
 
-	sLog.outDebug( "WORLD: Recieved CMSG_GOSSIP_HELLO from %u",GUID_LOPART(guid) );
+	sLog.outDebug( "WORLD: Received CMSG_GOSSIP_HELLO from %u",GUID_LOPART(guid) );
 
 	/* script */
 	ScriptSystem->OnCreatureEvent(qst_giver, _player, CREATURE_EVENT_ON_GOSSIP_TALK);
@@ -392,7 +448,7 @@ void WorldSession::HandleGossipHelloOpcode( WorldPacket & recv_data )
 void WorldSession::HandleGossipSelectOptionOpcode( WorldPacket & recv_data )
 {
 	if(!_player->IsInWorld()) return;
-	WorldPacket data;
+	//WorldPacket data;
 	uint32 option;
 	uint64 guid;
 
@@ -434,7 +490,7 @@ void WorldSession::HandleSpiritHealerActivateOpcode( WorldPacket & recv_data )
 	}
 	else // else add him one, that fucker, he think he will get away!?
 	{
-		SpellEntry *spellInfo = sSpellStore.LookupEntry( 15007 );//resurrectin sickness
+		SpellEntry *spellInfo = sSpellStore.LookupEntry( 15007 );//resurrection sickness
 		SpellCastTargets targets;
 		targets.m_unitTarget = GetPlayer()->GetGUID();
 		Spell*sp=new Spell(_player,spellInfo,true,NULL);
@@ -474,7 +530,7 @@ void WorldSession::HandleNpcTextQueryOpcode( WorldPacket & recv_data )
 				data << pGossip->Texts[i].Text[1];
 			else
 				data << pGossip->Texts[i].Text[0];
-			if(pGossip->Texts[i].Text[1][1])
+			if(pGossip->Texts[i].Text[1][0])
 				data << pGossip->Texts[i].Text[0];
 			else
 				data << pGossip->Texts[i].Text[1];
@@ -483,7 +539,7 @@ void WorldSession::HandleNpcTextQueryOpcode( WorldPacket & recv_data )
 			for(uint32 e=0;e<6;e++)
 				data << uint32(pGossip->Texts[i].Emote[e]);
 
-			if(i!=7) data << uint32(0x00);	// dont append to last
+			if(i!=7) data << uint32(0x00);	// don't append to last
 		}
 	} 
 	else 
@@ -523,15 +579,17 @@ void WorldSession::HandleBinderActivateOpcode( WorldPacket & recv_data )
 	SendInnkeeperBind(pC);
 }
 
+#define ITEM_ID_HEARTH_STONE 6948
+#define BIND_SPELL_ID 3286
+
 void WorldSession::SendInnkeeperBind(Creature* pCreature)
 {
 	if(!_player->IsInWorld()) return;
-	WorldPacket data;
+	WorldPacket data(45);
 
 	if(!_player->bHasBindDialogOpen)
 	{
-		data.Initialize(SMSG_GOSSIP_COMPLETE);
-		SendPacket(&data);
+        OutPacket(SMSG_GOSSIP_COMPLETE, 0, NULL);
 
 		data.Initialize(SMSG_BINDER_CONFIRM);
 		data << pCreature->GetGUID() << _player->GetZoneId();
@@ -542,21 +600,15 @@ void WorldSession::SendInnkeeperBind(Creature* pCreature)
 	}
 
 	// Add a hearthstone if they don't have one
-	if(!_player->GetItemInterface()->GetItemCount(6948, true))
+	if(!_player->GetItemInterface()->GetItemCount(ITEM_ID_HEARTH_STONE, true))
 	{
 		// We don't have a hearthstone. Add one.
 		if(_player->GetItemInterface()->CalculateFreeSlots(NULL) > 0)
 		{
-			/*data.Initialize(SMSG_ITEM_PUSH_RESULT);
-			data.Initialize( SMSG_ITEM_PUSH_RESULT );
-			data << GetPlayer()->GetGUID();
-			data << uint32(0x01) << uint32(0x00) << uint32(0x01) << uint8(0xFF);
-			data << uint32(6948) << uint64(0);
-			SendPacket(&data);*/
-			BuildItemPushResult(&data, _player->GetGUID(), ITEM_PUSH_TYPE_RECEIVE, 1, 6948, 0);
+			BuildItemPushResult(&data, _player->GetGUID(), ITEM_PUSH_TYPE_RECEIVE, 1, ITEM_ID_HEARTH_STONE, 0);
 			SendPacket(&data);
 
-			Item *item = objmgr.CreateItem( 6948, _player);
+			Item *item = objmgr.CreateItem( ITEM_ID_HEARTH_STONE, _player);
 
 			_player->GetItemInterface()->AddItemToFreeSlot(item);					
 		}
@@ -574,10 +626,8 @@ void WorldSession::SendInnkeeperBind(Creature* pCreature)
 	data << pCreature->GetGUID() << _player->GetBindZoneId();
 	SendPacket(&data);
 
-	data.Initialize(SMSG_GOSSIP_COMPLETE);
-	SendPacket(&data);
+    OutPacket(SMSG_GOSSIP_COMPLETE, 0, NULL);
 
-#define BIND_SPELL_ID 3286
 	data.Initialize( SMSG_SPELL_START );
 	data << pCreature->GetNewGUID();
 	data << pCreature->GetNewGUID();
@@ -601,10 +651,12 @@ void WorldSession::SendInnkeeperBind(Creature* pCreature)
 	_player->SendMessageToSet( &data, true );
 }
 
+#undef ITEM_ID_HEARTH_STONE
+#undef BIND_SPELL_ID
+
 void WorldSession::SendSpiritHealerRequest(Creature* pCreature)
 {
 	WorldPacket data(SMSG_SPIRIT_HEALER_CONFIRM, 8);
 	data << pCreature->GetGUID();
 	SendPacket(&data);
 }
-

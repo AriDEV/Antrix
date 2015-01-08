@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Packet Handler File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -18,7 +23,7 @@ void WorldSession::HandlePetAction(WorldPacket & recv_data)
 {
 	if(!_player->IsInWorld()) return;
 
-	WorldPacket data;
+	//WorldPacket data;
 	uint64 petGuid = 0;
 	uint16 misc = 0;
 	uint16 action = 0;
@@ -48,7 +53,7 @@ void WorldSession::HandlePetAction(WorldPacket & recv_data)
 						uint32 timer = pCharm->GetUInt32Value(UNIT_FIELD_BASEATTACKTIME);
 						if(!timer) timer = 2000;
 
-						sEventMgr.AddEvent(_player, &Player::_EventCharmAttack, EVENT_PLAYER_CHARM_ATTACK, timer, 0);
+						sEventMgr.AddEvent(_player, &Player::_EventCharmAttack, EVENT_PLAYER_CHARM_ATTACK, timer, 0,0);
 						_player->_EventCharmAttack();
 					}
 				}break;
@@ -69,6 +74,10 @@ void WorldSession::HandlePetAction(WorldPacket & recv_data)
 		if(!pTarget) pTarget = pPet;	// target self
 	}
 
+	if(action==PET_ACTION_ACTION && misc==PET_ACTION_STAY)//sit if STAY commanded
+		pPet->SetStandState(STANDSTATE_SIT);
+	else 
+		pPet->SetStandState(STANDSTATE_STAND);
 	switch(action)
 	{
 	case PET_ACTION_ACTION:
@@ -226,7 +235,7 @@ void WorldSession::HandlePetNameQuery(WorldPacket & recv_data)
 	Pet *pPet = _player->GetMapMgr()->GetPet(petGuid);
 	if(!pPet) return;
 
-	WorldPacket data;
+	WorldPacket data(8 + pPet->GetName().size());
 	data.SetOpcode(SMSG_PET_NAME_QUERY_RESPONSE);
 	data << (uint32)pPet->GetGUIDLow();
 	data << pPet->GetName();
@@ -237,7 +246,7 @@ void WorldSession::HandlePetNameQuery(WorldPacket & recv_data)
 void WorldSession::HandleStablePet(WorldPacket & recv_data)
 {
 	if(!_player->IsInWorld()) return;
-	WorldPacket data;
+	WorldPacket data(1);
 	data.SetOpcode(SMSG_STABLE_RESULT);
 	data << uint8(0x8);  // success
 	SendPacket(&data);
@@ -252,7 +261,7 @@ void WorldSession::HandleStablePet(WorldPacket & recv_data)
 void WorldSession::HandleUnstablePet(WorldPacket & recv_data)
 {
 	if(!_player->IsInWorld()) return;
-	WorldPacket data;
+	
 	uint64 npcguid = 0;
 	uint32 petnumber = 0;
 
@@ -267,6 +276,7 @@ void WorldSession::HandleUnstablePet(WorldPacket & recv_data)
 	// much easier? :P
 	_player->SpawnPet(petnumber);
 
+    WorldPacket data(1);
 	data.SetOpcode(SMSG_STABLE_RESULT);
 	data << uint8(0x9); // success?
 	SendPacket(&data);
@@ -275,7 +285,7 @@ void WorldSession::HandleUnstablePet(WorldPacket & recv_data)
 void WorldSession::HandleStabledPetList(WorldPacket & recv_data)
 {
 	if(!_player->IsInWorld()) return;
-	WorldPacket data;
+	WorldPacket data(10 + (_player->m_Pets.size() * 25));
 	data.SetOpcode(MSG_LIST_STABLED_PETS);
 
 	uint64 npcguid = 0;
@@ -291,7 +301,7 @@ void WorldSession::HandleStabledPetList(WorldPacket & recv_data)
 		data << uint32(itr->second->entry); // entryid
 		data << uint32(itr->second->level); // level
 		data << itr->second->name;		  // name
-		data << uint32(itr->second->loyalty);
+		data << uint32(itr->second->loyaltylvl);
 		if(itr->second->active && _player->GetSummon() != NULL)
 			data << uint8(STABLE_STATE_ACTIVE);
 		else
@@ -303,15 +313,15 @@ void WorldSession::HandleStabledPetList(WorldPacket & recv_data)
 
 void WorldSession::HandleBuyStableSlot(WorldPacket &recv_data)
 {
-	if(!_player->IsInWorld()) return;
+	if(!_player->IsInWorld() || _player->GetStableSlotCount() == 2) return;
 	uint8 scount = _player->GetStableSlotCount();
 	int32 cost = (scount == 0) ? -500 : -50000;
 	if(cost > (int32)_player->GetUInt32Value(PLAYER_FIELD_COINAGE))
 		return;
 
-	_player->ModUInt32Value(PLAYER_FIELD_COINAGE, -cost);
+	_player->ModUInt32Value(PLAYER_FIELD_COINAGE, cost);
 	
-	WorldPacket data;
+	WorldPacket data(1);
 	data.SetOpcode(SMSG_STABLE_RESULT);
 	data << uint8(0x0A);
 	SendPacket(&data);
@@ -337,35 +347,18 @@ void WorldSession::HandlePetSetActionOpcode(WorldPacket& recv_data)
 	Pet * pet = _player->GetSummon();
 	pet->ActionBar[slot] = spell;
 	pet->SetSpellState(spell, state);
-	/*if(state == 0x8100 &&	   // no autocast
-		spell == pet->GetAIInterface()->GetDefaultSpell()->spell->Id)
-	{
-		// removing autocast
-		pet->GetAIInterface()->SetDefaultSpell(0);
-	}
 
-	if(state == 0xC100)		 // adding autocast
-	{
-		AI_Spell * sp = pet->GetAISpellForSpellId(spell);
-		if(sp)
-			pet->GetAIInterface()->SetDefaultSpell(sp);
-	}*/
 	AI_Spell * sp = pet->GetAISpellForSpellId(spell);
 	if(!sp) return;
 
-	if(state == 0x8100)
+	if(state == 0x8100) //autocast OFF
+		sp->procChance = 0;
+	else if(state == 0xC100) //autocast ON
 	{
-		if(sp->procChance == 100)
-			sp->procChance = 0;
-
-		pet->GetAIInterface()->disable_melee = false;
-	}
-	else if(state == 0xC100)
-	{
-		if(sp->procChance != 100)
-			sp->procChance = 100;
-		
-		pet->GetAIInterface()->disable_melee = true;
+		if(sp->spell->NameHash == 2858464432UL)		/* Firebolt */
+			sp->procChance=100;
+		else
+			sp->procChance = PET_SPELL_AUTOCAST_CHANCE;
 	}
 }
 

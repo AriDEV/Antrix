@@ -1,32 +1,37 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * getopt() replacement
- * Copyright (c) 2007 Burlex
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef _ANTRIX_GETOPT_H
-#define _ANTRIX_GETOPT_H
+#ifndef _ASCENT_GETOPT_H
+#define _ASCENT_GETOPT_H
 
 /* getopt() wrapper */
-#define antrix_no_argument            0
-#define antrix_required_argument      1
-#define antrix_optional_argument      2
-struct antrix_option
+#define ascent_no_argument            0
+#define ascent_required_argument      1
+#define ascent_optional_argument      2
+struct ascent_option
 {
-	char *name;
+	const char *name;
 	int has_arg;
 	int *flag;
 	int val;
 };
-extern char antrix_optarg[514];
-int antrix_getopt_long_only (int ___argc, char *const *___argv, const char *__shortopts, const struct antrix_option *__longopts, int *__longind);
+extern char ascent_optarg[514];
+int ascent_getopt_long_only (int ___argc, char *const *___argv, const char *__shortopts, const struct ascent_option *__longopts, int *__longind);
 
 #endif

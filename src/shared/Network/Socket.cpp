@@ -22,17 +22,13 @@ Socket::Socket(SOCKET fd, uint32 sendbuffersize, uint32 recvbuffersize) : m_read
 #ifdef CONFIG_USE_IOCP
 	m_writeLock = 0;
 	m_completionPort = 0;
+#else
+	m_writeLock = 0;
 #endif
 
 	// Check for needed fd allocation.
 	if(m_fd == 0)
 		m_fd = SocketOps::CreateTCPFileDescriptor();
-
-	// epoll stuff
-#ifndef CONFIG_USE_IOCP
-	m_writeLock = 0;
-	sSocketMgr.AddSocket(this);
-#endif
 }
 
 Socket::~Socket()
@@ -84,6 +80,7 @@ void Socket::_OnConnect()
 	AssignToCompletionPort();
 	SetupReadEvent();
 #endif
+	sSocketMgr.AddSocket(this);
 
 	// Call virtual onconnect
 	OnConnect();
@@ -183,9 +180,7 @@ void Socket::Disconnect()
 	m_connected = false;
 
 	// remove from mgr
-#ifndef CONFIG_USE_IOCP
 	sSocketMgr.RemoveSocket(this);
-#endif
 
 	SocketOps::CloseSocket(m_fd);
 

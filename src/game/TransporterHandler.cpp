@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Transport System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -349,6 +354,10 @@ void Transporter::TransportPassengers(uint32 mapid, uint32 oldmap, float x, floa
 
 			plr->GetSession()->SendPacket(&Pending);
 			plr->_Relocate(mapid, v, false, true);
+
+			// Lucky bitch. Do it like on official.
+			if(plr->isDead())
+				plr->ResurrectPlayer();
 		}
 	}
 
@@ -374,16 +383,13 @@ void ObjectMgr::LoadTransporters()
 #ifdef CLUSTERING
 	return;
 #endif
-	sLog.outString("  Loading Transports...");
+	Log.Notice("ObjectMgr", "Loading Transports...");
 	QueryResult * QR = WorldDatabase.Query("SELECT * FROM transport_data");
 	if(!QR) return;
 	uint32 guid = 0;
 
-	int total = QR->GetRowCount();
+	int64 total = QR->GetRowCount();
 	TransportersCount=total;
-	m_transporters = new Transporter*[total+1];
-	memset(m_transporters, 0, sizeof(Transporter*)*(total + 1));
-//	int i = 0;
 	do 
 	{
 		uint32 entry = QR->Fetch()[0].GetUInt32();
@@ -394,10 +400,9 @@ void ObjectMgr::LoadTransporters()
 		{
 			sLog.outError("Transporter %s failed creation for some reason.", QR->Fetch()[1].GetString());
 			delete pTransporter;
-			m_transporters[guid]=NULL;
 		}else
 		{
-			m_transporters[guid]=pTransporter;
+            AddTransport(pTransporter);
 		}
 
 	} while(QR->NextRow());
@@ -407,5 +412,5 @@ void ObjectMgr::LoadTransporters()
 void Transporter::OnPushToWorld()
 {
 	// Create waypoint event
-	sEventMgr.AddEvent(this, &Transporter::UpdatePosition, EVENT_TRANSPORTER_NEXT_WAYPOINT, 100, 0);
+	sEventMgr.AddEvent(this, &Transporter::UpdatePosition, EVENT_TRANSPORTER_NEXT_WAYPOINT, 100, 0,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
 }

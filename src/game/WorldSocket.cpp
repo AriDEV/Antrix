@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -36,7 +41,7 @@ struct ServerPktHeader
 };
 #pragma pack(pop)
 
-WorldSocket::WorldSocket(SOCKET fd) : Socket(fd, WORLDSOCKET_SENDBUF_SIZE, WORLDSOCKET_RECVBUF_SIZE)
+WorldSocket::WorldSocket(SOCKET fd) : Socket(fd, sWorld.SocketSendBufSize, sWorld.SocketRecvBufSize)
 {
 	Authed = false;
 	mSize = mOpcode = mRemaining = 0;
@@ -51,7 +56,12 @@ WorldSocket::WorldSocket(SOCKET fd) : Socket(fd, WORLDSOCKET_SENDBUF_SIZE, WORLD
 
 WorldSocket::~WorldSocket()
 {
+	WorldPacket * pck;
+	while((pck = _queue.Pop()))
+		delete pck;
 
+	if(pAuthenticationPacket)
+		delete pAuthenticationPacket;
 }
 
 void WorldSocket::OnDisconnect()
@@ -71,11 +81,74 @@ void WorldSocket::OnDisconnect()
 
 void WorldSocket::OutPacket(uint16 opcode, uint16 len, const void* data)
 {
-	bool rv;
-	if(opcode == 0 || !IsConnected())
+	OUTPACKET_RESULT res = _OutPacket(opcode, len, data);
+	if(res == OUTPACKET_RESULT_SUCCESS)
 		return;
 
+	if(res == OUTPACKET_RESULT_NO_ROOM_IN_BUFFER)
+	{
+		/* queue the packet */
+		queueLock.Acquire();
+		WorldPacket * pck = new WorldPacket(opcode, len);
+		if(len) pck->append((const uint8*)data, len);
+		_queue.Push(pck);
+		queueLock.Release();
+	}
+}
+
+void WorldSocket::UpdateQueuedPackets()
+{
+	queueLock.Acquire();
+	if(!_queue.HasItems())
+	{
+		queueLock.Release();
+		return;
+	}
+
+	WorldPacket * pck;
+	while((pck = _queue.front()))
+	{
+		/* try to push out as many as you can */
+		switch(_OutPacket(pck->GetOpcode(), pck->size(), pck->size() ? pck->contents() : NULL))
+		{
+		case OUTPACKET_RESULT_SUCCESS:
+			{
+				delete pck;
+				_queue.pop_front();
+			}break;
+
+		case OUTPACKET_RESULT_NO_ROOM_IN_BUFFER:
+			{
+				/* still connected */
+				queueLock.Release();
+				return;
+			}break;
+
+		default:
+			{
+				/* kill everything in the buffer */
+				while((pck == _queue.Pop()))
+					delete pck;
+				queueLock.Release();
+				return;
+			}break;
+		}
+	}
+	queueLock.Release();
+}
+
+OUTPACKET_RESULT WorldSocket::_OutPacket(uint16 opcode, uint16 len, const void* data)
+{
+	bool rv;
+	if(!IsConnected())
+		return OUTPACKET_RESULT_NOT_CONNECTED;
+
 	BurstBegin();
+	if((m_writeByteCount + len + 4) >= m_writeBufferSize)
+	{
+		BurstEnd();
+		return OUTPACKET_RESULT_NO_ROOM_IN_BUFFER;
+	}
 
 	// Packet logger :)
 	sWorldLog.LogPacket(len, opcode, (const uint8*)data, 1);
@@ -83,8 +156,13 @@ void WorldSocket::OutPacket(uint16 opcode, uint16 len, const void* data)
 	// Encrypt the packet
 	// First, create the header.
 	ServerPktHeader Header;
+#ifdef USING_BIG_ENDIAN
+	Header.size = len + 2;
+	Header.cmd = swap16(opcode);
+#else
 	Header.cmd = opcode;
 	Header.size = ntohs(len + 2);
+#endif
 	_crypt.EncryptSend((uint8*)&Header, 4);
 
 	// Pass the header to our send buffer
@@ -98,6 +176,7 @@ void WorldSocket::OutPacket(uint16 opcode, uint16 len, const void* data)
 
 	if(rv) BurstPush();
 	BurstEnd();
+	return rv ? OUTPACKET_RESULT_SUCCESS : OUTPACKET_RESULT_SOCKET_ERROR;
 }
 
 void WorldSocket::OnConnect()
@@ -122,7 +201,7 @@ void WorldSocket::_HandleAuthSession(WorldPacket* recvPacket)
 	}
 	catch(ByteBuffer::error &)
 	{
-		sLog.outDetail("Incomplete copy of AUTH_SESSION recieved.");
+		sLog.outDetail("Incomplete copy of AUTH_SESSION Received.");
 		return;
 	}
 
@@ -197,13 +276,14 @@ void WorldSocket::InformationRetreiveCallback(WorldPacket & recvData, uint32 req
 	sha.UpdateData((uint8 *)&mSeed, 4);
 	sha.UpdateBigNumbers(&BNK, NULL);
 	sha.Finalize();
-
+#ifndef USING_BIG_ENDIAN
 	if (memcmp(sha.GetDigest(), digest, 20))
 	{
 		// AUTH_UNKNOWN_ACCOUNT = 21
 		OutPacket(SMSG_AUTH_RESPONSE, 1, "\x15");
 		return;
 	}
+#endif
 
 	// Allocate session
 	mSession = new WorldSession(AccountID, AccountName, this);
@@ -344,9 +424,13 @@ void WorldSocket::OnRead()
 
 			// Decrypt the header
 			_crypt.DecryptRecv((uint8*)&Header, 6);
-
+#ifdef USING_BIG_ENDIAN
+			mRemaining = mSize = Header.size - 4;
+			mOpcode = swap32(Header.cmd);
+#else
 			mRemaining = mSize = ntohs(Header.size) - 4;
 			mOpcode = Header.cmd;
+#endif
 		}
 
 		WorldPacket * Packet;
@@ -410,91 +494,92 @@ void WorldLog::LogPacket(uint32 len, uint16 opcode, const uint8* data, uint8 dir
 		uint16 lenght = len;
 		unsigned int count = 0;
 
-		log->AddFormat("{%s} Packet: (0x%04X) %s PacketSize = %u\n", (direction ? "SERVER" : "CLIENT"), opcode,
+		fprintf(m_file, "{%s} Packet: (0x%04X) %s PacketSize = %u\n", (direction ? "SERVER" : "CLIENT"), opcode,
 			LookupName(opcode, g_worldOpcodeNames), lenght);
-		log->Add("|------------------------------------------------|----------------|\n");
-		log->Add("|00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F |0123456789ABCDEF|\n");
-		log->Add("|------------------------------------------------|----------------|\n");
+		fprintf(m_file, "|------------------------------------------------|----------------|\n");
+		fprintf(m_file, "|00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F |0123456789ABCDEF|\n");
+		fprintf(m_file, "|------------------------------------------------|----------------|\n");
 
 		if(lenght > 0)
 		{
-			log->Add("|");
+			fprintf(m_file, "|");
 			for (count = 0 ; count < lenght ; count++)
 			{
 				if (countpos == 16)
 				{
 					countpos = 0;
 
-					log->Add("|");
+					fprintf(m_file, "|");
 
 					for (unsigned int a = count-16; a < count;a++)
 					{
 						if ((data[a] < 32) || (data[a] > 126))
-							log->Add(".");
+							fprintf(m_file, ".");
 						else
-							log->AddFormat("%c",data[a]);
+							fprintf(m_file, "%c",data[a]);
 					}
 
-					log->Add("|\n");
+					fprintf(m_file, "|\n");
 
 					line++;
-					log->Add("|");
+					fprintf(m_file, "|");
 				}
 
-				log->AddFormat("%02X ",data[count]);
+				fprintf(m_file, "%02X ",data[count]);
 
 				//FIX TO PARSE PACKETS WITH LENGHT < OR = TO 16 BYTES.
 				if (count+1 == lenght && lenght <= 16)
 				{
 					for (unsigned int b = countpos+1; b < 16;b++)
-						log->Add("   ");
+						fprintf(m_file, "   ");
 
-					log->Add("|");
+					fprintf(m_file, "|");
 
 					for (unsigned int a = 0; a < lenght;a++)
 					{
 						if ((data[a] < 32) || (data[a] > 126))
-							log->Add(".");
+							fprintf(m_file, ".");
 						else
-							log->AddFormat("%c",data[a]);
+							fprintf(m_file, "%c",data[a]);
 					}
 
 					for (unsigned int c = count; c < 15;c++)
-						log->Add(" ");
+						fprintf(m_file, " ");
 
-					log->Add("|\n");
+					fprintf(m_file, "|\n");
 				}
 
 				//FIX TO PARSE THE LAST LINE OF THE PACKETS WHEN THE LENGHT IS > 16 AND ITS IN THE LAST LINE.
 				if (count+1 == lenght && lenght > 16)
 				{
 					for (unsigned int b = countpos+1; b < 16;b++)
-						log->Add("   ");
+						fprintf(m_file, "   ");
 
-					log->Add("|");
+					fprintf(m_file, "|");
 
 					unsigned short print = 0;
 
 					for (unsigned int a = line * 16 - 16; a < lenght;a++)
 					{
 						if ((data[a] < 32) || (data[a] > 126))
-							log->Add(".");
+							fprintf(m_file, ".");
 						else
-							log->AddFormat("%c",data[a]);
+							fprintf(m_file, "%c",data[a]);
 
 						print++;
 					}
 
 					for (unsigned int c = print; c < 16;c++)
-						log->Add(" ");
+						fprintf(m_file, " ");
 
-					log->Add("|\n");
+					fprintf(m_file, "|\n");
 				}
 
 				countpos++;
 			}
 		}
-		log->Add("-------------------------------------------------------------------\n\n");
+		fprintf(m_file, "-------------------------------------------------------------------\n\n");
+		fflush(m_file);
 		mutex.Release();
 	}
 }

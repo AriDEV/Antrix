@@ -1,18 +1,24 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * AI Interface
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "StdAfx.h"
+
 
 AIInterface::AIInterface()
 {
@@ -52,6 +58,7 @@ AIInterface::AIInterface()
 
 	m_nextSpell = NULL;
 	m_nextTarget = NULL;
+    totemspell = NULL;
 	m_Unit = NULL;
 	m_PetOwner = NULL;
 	m_aiCurrentAgent = AGENT_NULL;
@@ -75,10 +82,14 @@ AIInterface::AIInterface()
 	m_formationLinkSqlId = 0;
 	m_currentHighestThreat = 0;
 
-	b_isAttackableOld = false;
 	disable_melee = false;
 	next_spell_time = 0;
 	m_hasWaypointEvents = false;
+	waiting_for_cooldown = false;
+	m_AIState_backup = m_AIState;
+	UnitToFollow_backup = NULL;
+	m_isGuard = false;
+	m_fastMove = false;
 }
 
 void AIInterface::Init(Unit *un, AIType at, MovementType mt)
@@ -195,13 +206,17 @@ void AIInterface::HandleEvent(uint32 event, Unit* pUnit, uint32 misc1)
 					ScriptSystem->OnCreatureEvent(((Creature*)m_Unit), pUnit, CREATURE_EVENT_ON_LEAVE_COMBAT);
 				}
 
-				if(m_AIType == AITYPE_PET && m_Unit->GetGUIDHigh() == HIGHGUID_PET)
+				//reset ProcCount
+				//ResetProcCounts();
+
+				if(m_AIType == AITYPE_PET)
 				{
 					m_AIState = STATE_FOLLOWING;
 					UnitToFollow = m_PetOwner;
 					FollowDistance = 3.0f;
 					m_lastFollowX = m_lastFollowY = 0;
-					((Pet*)m_Unit)->SetPetAction(PET_ACTION_FOLLOW);
+					if(m_Unit->GetGUIDHigh() == HIGHGUID_PET)
+						((Pet*)m_Unit)->SetPetAction(PET_ACTION_FOLLOW);
 					HandleEvent(EVENT_FOLLOWOWNER, 0, 0);
 				}
 				else
@@ -229,7 +244,14 @@ void AIInterface::HandleEvent(uint32 event, Unit* pUnit, uint32 misc1)
 				if(Target != NULL)
 					AttackReaction(Target, 1, 0);
 				else
+				{
 					firstLeaveCombat = true;
+					if(m_isGuard)
+					{
+						m_Unit->m_runSpeed *= 2.0f;
+						m_fastMove = true;
+					}
+				}
 
 				/*SpellEntry* spell = getSpellEntry(2054);
 				Affect* aff = new Affect(spell, 6000, m_Unit->GetGUID());
@@ -381,6 +403,8 @@ void AIInterface::HandleEvent(uint32 event, Unit* pUnit, uint32 misc1)
 			m_nextSpell = NULL;
 
 			SetNextTarget(NULL);
+            //reset ProcCount
+            //ResetProcCounts();
 		
 			//reset waypoint to 0
 			m_currentWaypoint = 0;
@@ -388,12 +412,13 @@ void AIInterface::HandleEvent(uint32 event, Unit* pUnit, uint32 misc1)
 			// There isn't any need to do any attacker checks here, as
 			// they should all be taken care of in DealDamage
 
-			if(m_AIType == AITYPE_PET)
+			//removed by Zack : why do we need to go to our master if we just died ? On next spawn we will be spawned near him after all
+/*			if(m_AIType == AITYPE_PET)
 			{
 				SetUnitToFollow(m_PetOwner);
 				SetFollowDistance(3.0f);
 				HandleEvent(EVENT_FOLLOWOWNER, m_Unit, 0);
-			}
+			}*/
 
 			if(m_Unit->GetMapMgr() && m_Unit->GetMapMgr()->GetMapInfo() && m_Unit->GetMapMgr()->GetMapInfo()->type == INSTANCE_RAID || m_Unit->GetMapMgr()->GetMapInfo() && m_Unit->GetMapMgr()->GetMapInfo()->type == INSTANCE_MULTIMODE)
             {
@@ -429,17 +454,13 @@ void AIInterface::Update(uint32 p_time)
 				(m_nextTarget && 
 					(!m_Unit->GetMapMgr()->GetUnit(m_nextTarget->GetGUID()) || 
 					!m_nextTarget->isAlive() ||
-					!IsInrange(m_Unit,m_nextTarget,pSpell->GetRadius(0)) || isAttackable(m_Unit, m_nextTarget) != b_isAttackableOld)))
+					!IsInrange(m_Unit,m_nextTarget,pSpell->GetRadius(0)) ||
+					!isAttackable(m_Unit, m_nextTarget))))
 			{
 				//something happend to our target, pick another one
 				pSpell->GenerateTargets(&targets);
 				if(targets.m_targetMask & TARGET_FLAG_UNIT)
-				{
 					m_nextTarget = m_Unit->GetMapMgr()->GetUnit(targets.m_unitTarget);
-					// used to determine when the totem should stop affecting the target
-					if(m_nextTarget)
-						b_isAttackableOld = true;
-				}
 				else m_nextTarget=NULL;//sorry but could not find a target
 			}
 			if(m_nextTarget)
@@ -481,6 +502,11 @@ void AIInterface::Update(uint32 p_time)
 					_UpdateCombat(p_time);
 				}
 			}
+			//we just use any creature as a pet guardian
+			else if(m_Unit->GetGUIDHigh() != HIGHGUID_PET)
+			{
+				_UpdateCombat(p_time);
+			}
 		}
 		else
 		{
@@ -494,7 +520,7 @@ void AIInterface::Update(uint32 p_time)
 	{
 		if(m_creatureState != MOVING)
 		{
-			if(m_AIType == AITYPE_PET && m_PetOwner != NULL)
+			if((m_AIType == AITYPE_PET) && m_PetOwner != NULL)
 			{
 				m_returnX = m_PetOwner->GetPositionX()+(3*(cosf(m_fallowAngle+m_PetOwner->GetOrientation())));
 				m_returnY = m_PetOwner->GetPositionY()+(3*(sinf(m_fallowAngle+m_PetOwner->GetOrientation())));
@@ -670,11 +696,13 @@ void AIInterface::_UpdateTargets()
 				HandleEvent(EVENT_LEAVECOMBAT, m_Unit, 0);
 			}*/
 		}
-		else if(m_aiTargets.size() == 0 && m_AIType == AITYPE_PET && m_Unit->GetGUIDHigh() == HIGHGUID_PET && static_cast<Pet*>(m_Unit)->GetPetState() == PET_STATE_AGGRESSIVE)
+		else if(m_aiTargets.size() == 0 && (m_AIType == AITYPE_PET && (m_Unit->GetGUIDHigh() == HIGHGUID_PET && static_cast<Pet*>(m_Unit)->GetPetState() == PET_STATE_AGGRESSIVE) || (m_Unit->GetGUIDHigh() != HIGHGUID_PET && disable_melee==false)))
 		{
 			 Unit* target = FindTarget();
 			 if(target)
+			 {
 				 AttackReaction(target, 1, 0);
+			 }
 
 		}
 	}
@@ -697,12 +725,16 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 	if(m_AIType != AITYPE_PET && disable_melee)
 		return;
 
+	//just make sure we are not hitting self. This was reported as an exploit.Should never ocure anyway
+	if(m_nextTarget==m_Unit)
+		m_nextTarget=GetMostHated();
+
 	uint16 agent = m_aiCurrentAgent;
 
 	// If creature is very far from spawn point return to spawnpoint
 	// If at instance dont return -- this is wrong ... instance creatures always returns to spawnpoint, dunno how do you got this ideia. 
 
-	if(m_AIType != AITYPE_PET 
+	if(	m_AIType != AITYPE_PET 
 		&& (m_outOfCombatRange && m_Unit->GetDistanceSq(m_returnX,m_returnY,m_returnZ) > m_outOfCombatRange) 
 		&& m_AIState != STATE_EVADE
 		&& m_AIState != STATE_SCRIPTMOVE)
@@ -711,7 +743,8 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 	}
 	else if(!m_nextTarget && m_AIState != STATE_FOLLOWING && m_AIState != STATE_SCRIPTMOVE)
 	{
-		SetNextTarget(FindTargetForSpell(m_nextSpell));
+//		SetNextTarget(FindTargetForSpell(m_nextSpell));
+		m_nextTarget=GetMostHated();
 		if(!m_nextTarget)
 		{
 			HandleEvent(EVENT_LEAVECOMBAT, m_Unit, 0);
@@ -731,10 +764,16 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 
 	if(cansee && m_nextTarget && m_nextTarget->isAlive() && m_AIState != STATE_EVADE && !m_Unit->isCasting())
 	{
-		if(agent == AGENT_NULL)
+		if(agent == AGENT_NULL || (m_AIType == AITYPE_PET && !m_nextSpell)) // allow pets autocast
 		{
 			if(!m_nextSpell)
 				m_nextSpell = this->getSpell();
+
+			if(!m_nextSpell && waiting_for_cooldown)
+			{
+				/* don't start running to the target for melee if we're waiting for a cooldown. */
+				return;
+			}
 
 			if(m_canFlee && !m_hasFleed 
 				&& ((m_Unit->GetUInt32Value(UNIT_FIELD_HEALTH) / m_Unit->GetUInt32Value(UNIT_FIELD_MAXHEALTH)) < m_FleeHealth ))
@@ -796,8 +835,28 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 				combatReach[0] = 0.0f;
 				combatReach[1] = _CalcCombatRange(m_nextTarget, false);
 
-				if(distance >= combatReach[0] && distance <= combatReach[1]) // Target is in Range -> Attack
+				if(	
+//					distance >= combatReach[0] && 
+					distance <= combatReach[1]) // Target is in Range -> Attack
 				{
+#ifdef ENABLE_CREATURE_DAZE
+					//now if the target is facing his back to us then we could just cast dazed on him :P
+					//as far as i know dazed is casted by most of the creatures but feel free to remove this code if you think otherwise
+					if(!(m_Unit->m_factionDBC->RepListId == -1 && m_Unit->m_faction->FriendlyMask==0 && m_Unit->m_faction->HostileMask==0) /* neutral creature */
+						&& m_nextTarget->IsPlayer() && !m_Unit->IsPet() && Rand(CREATURE_CHANCE_TO_DAZE))
+					{
+						float our_facing=m_Unit->calcRadAngle(m_Unit->GetPositionX(),m_Unit->GetPositionY(),m_nextTarget->GetPositionX(),m_nextTarget->GetPositionY());
+						float his_facing=m_nextTarget->GetOrientation();
+						if(fabs(our_facing-his_facing)<CREATURE_DAZE_TRIGGER_ANGLE && !m_nextTarget->HasNegativeAura(CREATURE_SPELL_TO_DAZE))
+						{
+							SpellEntry *info = sSpellStore.LookupEntry(CREATURE_SPELL_TO_DAZE);
+							Spell *sp = new Spell(m_Unit, info, false, NULL);
+							SpellCastTargets targets;
+							targets.m_unitTarget = m_nextTarget->GetGUID();
+							sp->prepare(&targets);
+						}
+					}
+#endif
 					if(UnitToFollow != NULL)
 					{
 						UnitToFollow = NULL; //we shouldn't be following any one
@@ -832,8 +891,11 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 				else // Target out of Range -> Run to it
 				{
 					//calculate next move
-					float dist = 1.0f;
-					dist = combatReach[1]-1.15f;
+					float dist = combatReach[1]-PLAYER_SIZE;
+
+					if(dist < PLAYER_SIZE)
+						dist = PLAYER_SIZE; //unbelievable how this could happen
+
 					m_moveRun = true;
 					_CalcDestinationAndMove(m_nextTarget, dist);
 				}
@@ -876,7 +938,7 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 						if(infront)
 						{
 							m_Unit->setAttackTimer(0, false);
-							SpellEntry *info = sSpellStore.LookupEntry(SPELL_RANGED_BOW);
+							SpellEntry *info = sSpellStore.LookupEntry(SPELL_RANGED_GENERAL);
 							if(info)
 							{
 								Spell *sp = new Spell(m_Unit, info, false, NULL);
@@ -920,9 +982,19 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 				if((distance <= powf(m_nextSpell->maxrange,2)  && distance >= powf(m_nextSpell->minrange,2)) || m_nextSpell->maxrange == 0) // Target is in Range -> Attack
 				{
 					SpellEntry* spellInfo = m_nextSpell->spell;
+/*					if(m_nextSpell->procCount)
+						m_nextSpell->procCount--;*/
+
 					SpellCastTargets targets = setSpellTargets(spellInfo, m_nextTarget);
 					CastSpell(m_Unit, spellInfo, targets);
-					AddSpellCooldown(spellInfo, m_nextSpell);
+                    AddSpellCooldown(spellInfo, m_nextSpell);
+					//add pet spell after use to pet owner with some chance
+					if(m_Unit->GetGUIDHigh() == HIGHGUID_PET && m_PetOwner->IsPlayer())
+					{	
+						Pet * pPet = static_cast<Pet*>(m_Unit);
+						if(pPet && Rand(10))
+							pPet->AddPetSpellToOwner(spellInfo->Id);
+					}
 					m_nextSpell = NULL;
 				}
 				else // Target out of Range -> Run to it
@@ -954,9 +1026,10 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 					CALL_SCRIPT_EVENT(m_Unit, OnFlee)(m_nextTarget);
 
 				m_AIState = STATE_FLEEING;
-				m_nextTarget = m_Unit;
-
-				m_Unit->SetUInt64Value(UNIT_FIELD_TARGET, 0);
+				//removed by Zack : somehow creature starts to attack sefl. Just making sure it is not this one
+//				m_nextTarget = m_Unit;
+//				m_Unit->SetUInt64Value(UNIT_FIELD_TARGET, 0);
+				SetNextTarget(NULL);
 				m_Unit->setAttackTarget(0);
 				m_Unit->clearAttackers(true);
 
@@ -982,6 +1055,8 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 			{
 				FindFriends(400.0f/*20.0f*/);
 				m_hasCalledForHelp = true; // We only want to call for Help once in a Fight.
+				if(m_Unit->GetTypeId() == TYPEID_UNIT)
+						objmgr.HandleMonsterSayEvent(((Creature*)m_Unit), MONSTER_SAY_EVENT_CALL_HELP);
 				CALL_SCRIPT_EVENT(m_Unit, OnCallForHelp)();
 			}break;
 		}
@@ -1190,6 +1265,9 @@ Unit* AIInterface::FindTarget()
 			}
 		}
 		crange = _CalcCombatRange(pUnit,false);
+		if(m_isGuard)
+			crange *= 4;
+
 		z_diff = fabs(m_Unit->GetPositionZ() - pUnit->GetPositionZ());
 		if(z_diff > crange)
 		{
@@ -1232,6 +1310,12 @@ Unit* AIInterface::FindTarget()
 
 	if( target )
 	{
+		if(m_isGuard)
+		{
+			m_Unit->m_runSpeed *= 2.0f;
+			m_fastMove = true;
+		}
+
 		AttackReaction(target, 1, 0);
 		if(target->IsPlayer())
 		{
@@ -1302,17 +1386,7 @@ Unit* AIInterface::FindTargetForSpell(AI_Spell *sp)
 		}
 	}
 
-
-	if(GetIsTaunted())
-	{
-		return tauntedBy;
-	}
-	else
-	{
-		return GetMostHated();
-	}
-
-	return NULL;
+	return GetMostHated();
 }
 
 bool AIInterface::FindFriends(float dist)
@@ -1327,7 +1401,7 @@ bool AIInterface::FindFriends(float dist)
 
 	for( itr = m_Unit->GetInRangeSetBegin(); itr != m_Unit->GetInRangeSetEnd(); itr++ )
 	{
-		if((*itr)->GetTypeId() != TYPEID_UNIT)
+		if(!(*itr) || (*itr)->GetTypeId() != TYPEID_UNIT)
 			continue;
 
 		pUnit = static_cast<Unit*>((*itr));
@@ -1363,53 +1437,68 @@ bool AIInterface::FindFriends(float dist)
 	}
 
 	// check if we're a civillan, in which case summon guards on a despawn timer
-	/*if(m_Unit->GetCreatureName() && m_Unit->GetCreatureName()->Civilian && getMSTime() > m_guardTimer && m_Unit->GetMapId() < 2)
+	uint8 civilian = (((Creature*)m_Unit)->GetCreatureName()) ? (((Creature*)m_Unit)->GetCreatureName()->Civilian) : 0;
+	uint32 family = (((Creature*)m_Unit)->GetCreatureName()) ? (((Creature*)m_Unit)->GetCreatureName()->Type) : 0;
+	if(family == HUMANOID && civilian && getMSTime() > m_guardTimer && m_Unit->GetMapMgr()->GetMapInfo()->type == INSTANCE_NULL)
 	{
-		switch(m_Unit->GetCreatureName()->Family)
-		{
-		case UNDEAD:
-		case HUMANOID:
-			break;
-		default:
+		uint16 AreaId = m_Unit->GetMapMgr()->GetAreaID(m_Unit->GetPositionX(),m_Unit->GetPositionY());
+		AreaTable * at = sAreaStore.LookupEntry(AreaId);
+		if(!at)
 			return result;
-			break;
-		}
 
-		m_Unit->SendChatMessage(CHAT_MSG_MONSTER_SAY, LANG_UNIVERSAL, "Guards, help me!");
-		
-		uint32 guardid = 1423;
-		if(m_Unit->m_factionDBC->factionGroupReputationFrame == 67) // horde
-			guardid = 3296; // ogri
-		CreatureSpawnTemplate * pSpawnTemplate = objmgr.GetCreatureSpawnTemplate(guardid);
-		if(pSpawnTemplate != 0)
+		ZoneGuardEntry * zoneSpawn = ZoneGuardStorage.LookupEntry(at->ZoneId);
+		if(!zoneSpawn) return result;
+
+		uint32 team = 1; // horde default
+		if(isAlliance(m_Unit))
+			team = 0;
+
+		uint32 guardid = zoneSpawn->AllianceEntry;
+		if(team == 1) guardid = zoneSpawn->HordeEntry;
+		if(!guardid) return result;
+
+		uint32 languageid = (team == 0) ? LANG_COMMON : LANG_ORCISH;
+		m_Unit->SendChatMessage(CHAT_MSG_MONSTER_SAY, languageid, "Guards, help me!");
+		CreatureInfo * ci = CreatureNameStorage.LookupEntry(guardid);
+		if(!ci)
+			return result;
+
+		float x = m_Unit->GetPositionX() + (float)( (float)(rand() % 150 + 100) / 1000.0f );
+		float y = m_Unit->GetPositionY() + (float)( (float)(rand() % 150 + 100) / 1000.0f );
+		float z = m_Unit->GetPositionZ();
+		float adt_z = m_Unit->GetMapMgr()->GetLandHeight(x, y);
+		if(fabs(z - adt_z) < 3)
+			z = adt_z;
+
+		CreatureProto * cp = CreatureProtoStorage.LookupEntry(guardid);
+		if(!cp) return result;
+
+		for(int i = 1; i <= m_Unit->GetInRangeOppFactCount(); i++)
 		{
-			Creature *pCreature = sObjHolder.CreateCreature();
-			// FIXME: Summon hardcoded stormwind guard/ogrimmar grunt
-			float x = m_Unit->GetPositionX() + (float)( (float)(rand() % 150 + 100) / 1000.0f );
-			float y = m_Unit->GetPositionY() + (float)( (float)(rand() % 150 + 100) / 1000.0f );
-			float z = m_Unit->GetPositionZ();
-			float adt_z = m_Unit->GetMapMgr()->GetLandHeight(x, y);
-			if(fabs(z - adt_z) < 3)
-				z = adt_z;
+			if(i >= 3)
+				break;
 
-			pCreature->Create(pSpawnTemplate, m_Unit->GetMapId(), x, y, z, 0);
-			pCreature->SetInstanceID(m_Unit->GetInstanceID());
-			pCreature->SetZoneId(m_Unit->GetZoneId());
-			
-			pCreature->AddToWorld();
-
-			// set despawn timer
-			// at 5mins
-			sEventMgr.AddEvent(pCreature, &Creature::Despawn, EVENT_CREATURE_SAFE_DELETE, 60*5*1000, 1);
-
-			for(it = m_aiTargets.begin(); it != m_aiTargets.end(); ++it)
+			Creature * guard = m_Unit->GetMapMgr()->CreateCreature();
+			guard->Load(cp, x, y, z);
+			guard->SetInstanceID(m_Unit->GetInstanceID());
+			guard->SetZoneId(m_Unit->GetZoneId());
+			guard->SetFlag(UNIT_FIELD_FLAGS, U_FIELD_FLAG_PVP); /* shitty DBs */
+		
+			if(guard->CanAddToWorld())
+				sEventMgr.AddEvent(guard, &Creature::AddToWorld, EVENT_UNK, sRand.randInt(8)*1000, 1,0); /* staggered, not all at once :) */
+			else
 			{
-				pCreature->GetAIInterface()->AttackReaction(it->first, 1, 0);
+				guard->SafeDelete();
+				return result;
 			}
+			
+			sEventMgr.AddEvent(guard, &Creature::SetGuardWaypoints, EVENT_UNK, 10000, 1,0);
+			sEventMgr.AddEvent(guard, &Creature::SafeDelete, EVENT_CREATURE_SAFE_DELETE, 60*5*1000, 1,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
+
 		}
 
 		m_guardTimer = getMSTime() + 15000;
-	}*/
+	}
 
 	return result;
 }
@@ -1484,9 +1573,14 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 	if(target->GetTypeId() == TYPEID_UNIT || target->GetTypeId() == TYPEID_PLAYER)
 	{
 		float angle = m_Unit->calcAngle(m_Unit->GetPositionX(), m_Unit->GetPositionY(), target->GetPositionX(), target->GetPositionY()) * M_PI / 180.0f;
-
 		float x = dist * cosf(angle);
 		float y = dist * sinf(angle);
+		if(target->GetTypeId() == TYPEID_PLAYER && ((Player*)target)->m_isMoving)
+		{
+			// cater for moving player vector based on orientation
+			x -= cosf(target->GetOrientation());
+			y -= sinf(target->GetOrientation());
+		}
 
 		m_nextPosX = target->GetPositionX() - x;
 		m_nextPosY = target->GetPositionY() - y;
@@ -1519,7 +1613,7 @@ float AIInterface::_CalcCombatRange(Unit* target, bool ranged)
 		return 0;
 	}
 	float range = 0.0f;
-	float rang = 1.5f;
+	float rang = PLAYER_SIZE;
 	if(ranged)
 	{
 		rang = 5.0f;
@@ -1533,6 +1627,7 @@ float AIInterface::_CalcCombatRange(Unit* target, bool ranged)
 
 	range = (((powf(targetradius,2)*targetscale) + selfreach) + ((selfradius*selfscale) + rang));
 	if(range > 28.29f) range = 28.29f;
+	if(range < PLAYER_SIZE) range = PLAYER_SIZE; //unbeleavable to get here :)
 	return range;
 }
 
@@ -1565,7 +1660,11 @@ void AIInterface::SendMoveToPacket(float toX, float toY, float toZ, float toO, u
 	0x00000100 - Run
 	0x00000300 - Fly
 	*/
+#ifndef USING_BIG_ENDIAN
 	StackWorldPacket<60> data(SMSG_MONSTER_MOVE);
+#else
+	WorldPacket data(SMSG_MONSTER_MOVE, 60);
+#endif
 	data << m_Unit->GetNewGUID();
 	data << m_Unit->GetPositionX() << m_Unit->GetPositionY() << m_Unit->GetPositionZ();
 	data << getMSTime();
@@ -1840,10 +1939,14 @@ bool AIInterface::addWayPoint(WayPoint* wp)
 	if(wp->id <= 0)
 		return false; //not valid id
 
-	if(m_waypoints->find( wp->id ) == m_waypoints->end( ))
+	if(m_waypoints->size() <= wp->id)
+		m_waypoints->resize(wp->id+1);
+
+	//if(m_waypoints->find( wp->id ) == m_waypoints->end( ))
+	if((*m_waypoints)[wp->id] == NULL)
 	{
-		//m_waypoints[wp->id] = wp;
-		m_waypoints->insert(WayPointMap::value_type(wp->id, wp));
+		(*m_waypoints)[wp->id] = wp;
+		//m_waypoints->insert(WayPointMap::value_type(wp->id, wp));
 		return true;
 	}
 	return false;
@@ -1867,8 +1970,13 @@ void AIInterface::changeWayPointID(uint32 oldwpid, uint32 newwpid)
 	if(!oldwp) 
 		return;
 
+	oldwp->id = newwpid;
+	originalwp->id = oldwpid;
+	(*m_waypoints)[oldwp->id] = oldwp;
+	(*m_waypoints)[originalwp->id] = originalwp;
+
 	//we have valid wps in the positions
-	WayPoint* wpnext = NULL;
+	/*WayPoint* wpnext = NULL;
 	WayPoint* wp = NULL;
 	uint32 i = 0;
 	uint32 endat = 0;
@@ -1933,7 +2041,7 @@ void AIInterface::changeWayPointID(uint32 oldwpid, uint32 newwpid)
 				(*m_waypoints)[newwpid] = oldwp; //position 4
 			}
 		}
-	}
+	}*/
 
 	//SaveAll to db
 	saveWayPoints(0);
@@ -1947,19 +2055,24 @@ void AIInterface::deleteWayPoint(uint32 wpid, bool save)
 	if(wpid > m_waypoints->size()) 
 		return; //not valid id
 
-	uint32 startsize = m_waypoints->size();
+//	uint32 startsize = m_waypoints->size();
 	
 	//Delete Waypoint
-	WayPointMap::iterator iter = m_waypoints->find( wpid );
+	/*WayPointMap::iterator iter = m_waypoints->find( wpid );
 	if( iter != m_waypoints->end() )
 	{
 		delete iter->second;
 		m_waypoints->erase( iter );
+	}*/
+	if(m_waypoints->size() > wpid)
+	{
+		delete (*m_waypoints)[wpid];
+		(*m_waypoints)[wpid] = NULL;
 	}
 	
-	WayPoint* wp = NULL;
+//	WayPoint* wp = NULL;
 	//Reorginise the rest
-	if(wpid <= m_waypoints->size()) //non existant wp
+	/*if(wpid <= m_waypoints->size()) //non existant wp
 	{
 		uint32 i = 0;
 		for(i = 0; i < startsize-wpid;i++)
@@ -1971,13 +2084,26 @@ void AIInterface::deleteWayPoint(uint32 wpid, bool save)
 				(*m_waypoints)[wpid+i] = wp;
 			}
 		}
-		m_waypoints->erase( wpid+i );
+		//m_waypoints->erase( wpid+i );
+	}*/
+	vector<WayPoint*> new_wps;
+	for(vector<WayPoint*>::iterator itr = m_waypoints->begin(); itr != m_waypoints->end(); ++itr) {
+		if((*itr) != NULL)
+			new_wps.push_back(*itr);
 	}
-	if(m_waypoints->size()==0)
+
+	if(!new_wps.size())
 	{
 		delete m_waypoints;
 		m_waypoints = NULL;
+		if(save)
+			saveWayPoints(0);
+		return;
 	}
+
+	m_waypoints->resize(new_wps.size());
+	for(uint32 i = 0; i < new_wps.size(); ++i)
+		(*m_waypoints)[i] = new_wps[i];
 
 	//SaveAll to db
 	if(save)
@@ -2001,9 +2127,9 @@ bool AIInterface::showWayPoints(uint32 wpid, Player* pPlayer, bool Backwards)
 	WayPoint* wp = NULL;
 	for (itr = m_waypoints->begin(); itr != m_waypoints->end(); itr++)
 	{
-		if( (itr->second->id == wpid) || (wpid == 0) )
+		if( (*itr) != NULL && (((*itr)->id == wpid) || (wpid == 0)) )
 		{
-			wp = itr->second;
+			wp = *itr;
 
 			//Create
 			Creature* pWayPoint = new Creature(HIGHGUID_WAYPOINT ,wp->id);
@@ -2032,7 +2158,7 @@ bool AIInterface::showWayPoints(uint32 wpid, Player* pPlayer, bool Backwards)
 			//Create on client
 			ByteBuffer buf(2500);
 			uint32 count = pWayPoint->BuildCreateUpdateBlockForPlayer(&buf, pPlayer);
-			pPlayer->PushUpdateData(&buf, count);
+			pPlayer->PushCreationData(&buf, count);
 
 			//root the object
 			WorldPacket data1;
@@ -2066,10 +2192,10 @@ bool AIInterface::hideWayPoints(uint32 wpid, Player* pPlayer)
 
 	for (itr = m_waypoints->begin(); itr != m_waypoints->end(); itr++)
 	{
-		if( (itr->second->id == wpid) || (wpid == 0) )
+		if( (*itr) != NULL && (((*itr)->id == wpid) || (wpid == 0)) )
 		{
 			// avoid C4293
-			guid = ((uint64)HIGHGUID_WAYPOINT << 32) | itr->second->id;
+			guid = ((uint64)HIGHGUID_WAYPOINT << 32) | (*itr)->id;
 			WoWGuid wowguid(guid);
 			pPlayer->PushOutOfRange(wowguid);
 			if(wpid != 0) return true;
@@ -2102,12 +2228,12 @@ bool AIInterface::saveWayPoints(uint32 wpid)
 	{
 		if(itr == m_waypoints->end()) 
 			break;
-		if(!itr->second) 
+		if(!(*itr)) 
 			continue;
 
-		if( (itr->second->id == wpid) || (wpid == 0) )
+		if( ((*itr)->id == wpid) || (wpid == 0) )
 		{
-			wp = itr->second;
+			wp = (*itr);
 
 			if(wpid != 0)
 			{
@@ -2146,13 +2272,13 @@ bool AIInterface::saveWayPoints(uint32 wpid)
 WayPoint* AIInterface::getWayPoint(uint32 wpid)
 {
 	if(!m_waypoints)return NULL;
-	if(wpid > m_waypoints->size()) 
+	if(wpid >= m_waypoints->size()) 
 		return NULL; //not valid id
 
-	WayPointMap::const_iterator itr = m_waypoints->find( wpid );
+	/*WayPointMap::const_iterator itr = m_waypoints->find( wpid );
 	if( itr != m_waypoints->end( ) )
-		return itr->second;
-	return NULL;
+		return itr->second;*/
+	return m_waypoints->at(wpid);
 }
 
 void AIInterface::_UpdateMovement(uint32 p_time)
@@ -2187,6 +2313,12 @@ void AIInterface::_UpdateMovement(uint32 p_time)
 		{
 			if(m_timeMoved == m_timeToMove) //reached destination
 			{
+				if(m_fastMove)
+				{
+					m_Unit->UpdateSpeed();
+					m_fastMove = false;
+				}
+
 				if(m_moveType == MOVEMENTTYPE_WANTEDWP)//We reached wanted wp stop now
 					m_moveType = MOVEMENTTYPE_DONTMOVEWP;
 
@@ -2303,7 +2435,7 @@ void AIInterface::_UpdateMovement(uint32 p_time)
 					// register linkup event
 					c->haslinkupevent = true;
 					sEventMgr.AddEvent(c, &Creature::FormationLinkUp, m_formationLinkSqlId, 
-						EVENT_CREATURE_FORMATION_LINKUP, 1000, 0);
+						EVENT_CREATURE_FORMATION_LINKUP, 1000, 0,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
 				}
 			}
 			else
@@ -2602,49 +2734,49 @@ AI_Spell *AIInterface::getSpell()
 	next_spell_time = World::UNIXTIME + 1;
 
 	// look at our spells
-	AI_Spell * sp;
-	uint32 cast_time;
-	AI_Spell * def_spell = 0;
-	for(list<AI_Spell*>::iterator itr = m_spells.begin(); itr != m_spells.end(); ++itr)
+	AI_Spell *  sp = NULL;
+	AI_Spell *  def_spell = NULL;
+    uint32      cast_time;
+	for(list<AI_Spell*>::iterator itr = m_spells.begin(); itr != m_spells.end();)
 	{
         sp = *itr;
-		if(sp->agent == AGENT_SPELL)
+		++itr;
+		if(/*sp->procCount && */sp->agent == AGENT_SPELL)
 		{
-			switch(sp->spellType)
+			if (sp->spellType == STYPE_BUFF)
 			{
-			case STYPE_BUFF:
+				// cast the buff at requested percent only if we don't have it already
+				if(sp->procChance >= 100 || Rand(sp->procChance))
 				{
-					// cast the buff at requested percent only if we don't have it already
-					if(sp->procChance >= 100 || Rand(sp->procChance))
+					if(!m_Unit->HasActiveAura(sp->spell->Id))
 					{
-						if(!m_Unit->HasActiveAura(sp->spell->Id))
-						{
 #ifdef _AI_DEBUG
-							sLog.outString("AI DEBUG: Returning aura %s for unit %u", sSpellStore.LookupString( sp->spell->Name ),
-								sp->entryId);
-#endif
-							return sp;
-						}
-					}
-				}break;
-
-			default:
-				{
-					if(def_spell)
-						continue;
-
-					// cast the spell at requested percent.
-					if(sp->procChance >= 100 || Rand(sp->procChance))
-					{
-						if(m_Unit->GetUInt32Value(UNIT_FIELD_POWER1) < sp->spell->manaCost)
-							continue;
-#ifdef _AI_DEBUG
-						sLog.outString("AI DEBUG: Returning spell %s for unit %u", sSpellStore.LookupString( sp->spell->Name ),
+						sLog.outString("AI DEBUG: Returning aura %s for unit %u", sSpellStore.LookupString( sp->spell->Name ),
 							sp->entryId);
 #endif
-						def_spell = sp;
+						return sp;
 					}
-				}break;
+				}
+			}
+            else
+			{
+				if(def_spell!=0)
+					continue;
+
+				// cast the spell at requested percent.
+				if(sp->procChance >= 100 || Rand(sp->procChance))
+				{
+					//focus/mana requirement
+					if(m_Unit->GetUInt32Value(UNIT_FIELD_POWER3) < sp->spell->manaCost && m_Unit->GetUInt32Value(UNIT_FIELD_POWER1) < sp->spell->manaCost)
+							continue;
+					
+
+#ifdef _AI_DEBUG
+					sLog.outString("AI DEBUG: Returning spell %s for unit %u", sSpellStore.LookupString( sp->spell->Name ),
+						sp->entryId);
+#endif
+					def_spell = sp;
+				}
 			}
 		}
 	}
@@ -2653,7 +2785,11 @@ AI_Spell *AIInterface::getSpell()
 	{
 		// Check for cooldowns
 		if(GetSpellCooldown(sp->spell->Id) > 0)
+		{
+			/* we're waiting for a spell to cool down. set this flag so we don't go running until it happens. */
+			waiting_for_cooldown = true;
 			return 0;
+		}
 
 		cast_time = GetCastTime(sCastTime.LookupEntry( sp->spell->CastingTimeIndex ) );
 		cast_time /= 1000;
@@ -2664,6 +2800,8 @@ AI_Spell *AIInterface::getSpell()
 		AddSpellCooldown(sp->spell->Id);*/
 		return def_spell;
 	}
+	else
+		waiting_for_cooldown = false;	/* we're not waiting for any spells to cool down */
 
 #ifdef _AI_DEBUG
 	sLog.outString("AI DEBUG: Returning no spell for unit %u", m_Unit->GetEntry());
@@ -2699,59 +2837,47 @@ uint32 AIInterface::getThreatByPtr(Unit* obj)
 	return 0;
 }
 
+//should return a valid target
 Unit *AIInterface::GetMostHated()
 {
 	Unit *ResultUnit=NULL;
 
-	//override mosthated with taunted target
+	//override mosthated with taunted target. Basic combat checks are made for it. 
+	//What happens if we can't see tauntedby unit ?
 	ResultUnit = getTauntedBy();
 	if(ResultUnit)
 		return ResultUnit;
 
-	int32 threat = 0;
+	pair<Unit*, int32> currentTarget;
+	currentTarget.first = 0;
+	currentTarget.second = -1;
 
-	TargetMap::iterator itr,itr2;
-	for (itr = m_aiTargets.begin(); itr != m_aiTargets.end();) // Find Target and Cleanup Targetlist
+	TargetMap::iterator it2 = m_aiTargets.begin();
+	TargetMap::iterator itr;
+	for(; it2 != m_aiTargets.end();)
 	{
-		itr2 = itr;
-		++itr;
-		if((itr2->second + itr2->first->GetThreatModifyer()) > threat) // threat may be < 0 due to some modifyers.
+		itr = it2;
+        ++it2;
+
+		/* check the target is valid */
+		if(itr->first->GetInstanceID() != m_Unit->GetInstanceID() || !itr->first->isAlive() || !isAttackable(m_Unit, itr->first))
 		{
-/*
-			bool cansee;
-			if(m_nextTarget && m_nextTarget->GetInstanceID() == m_Unit->GetInstanceID())
-			{
-				if(m_Unit->GetTypeId() == TYPEID_UNIT)
-					cansee=((Creature*)m_Unit)->CanSee(m_nextTarget);
-				else
-					cansee = ((Player*)m_Unit)->CanSee(m_nextTarget);
-			}
-			else 
-				cansee=false; */ 
-//			if(itr2->first->isAlive() )
-			if(	!m_Unit->GetMapMgr()->GetUnit(m_nextTarget->GetGUID()) || 
-				!m_nextTarget->isAlive()
-//				!cansee || 
-//				!isAttackable(m_Unit, m_nextTarget) //maybe our target is not attackable anymore : PVP
-				)
-			{
-				m_aiTargets.erase(itr2);
-			}
-			else if((itr2->second + itr2->first->GetThreatModifyer())>threat)
-			{
-				ResultUnit = itr2->first;
-				threat = (itr2->second + itr2->first->GetThreatModifyer());
-			}
+			m_aiTargets.erase(itr);
+			continue;
 		}
-	}
-	m_currentHighestThreat = threat;
 
-/*	if(ResultUnit && ResultUnit->GetInstanceID() == m_Unit->GetInstanceID())
-	{
-		m_Unit->SetUInt64Value(UNIT_FIELD_TARGET, target->GetGUID());
-		return target;
-	}*/
-	return ResultUnit;
+		if((itr->second + itr->first->GetThreatModifyer()) > currentTarget.second)
+		{
+			/* new target */
+			currentTarget.first = itr->first;
+			currentTarget.second = itr->second + itr->first->GetThreatModifyer();
+			m_currentHighestThreat = currentTarget.second;
+		}
+
+		/* there are no more checks needed here... the needed checks are done by CheckTarget() */
+	}
+
+	return currentTarget.first;
 }
 
 bool AIInterface::modThreatByGUID(uint64 guid, int32 mod)
@@ -2777,7 +2903,6 @@ bool AIInterface::modThreatByPtr(Unit* obj, int32 mod)
 		if((it->second + obj->GetThreatModifyer()) > m_currentHighestThreat)
 		{
 			// new target!
-			m_currentHighestThreat = it->second + obj->GetThreatModifyer();
 			if(!isTaunted)
 			{
 				m_currentHighestThreat = it->second + obj->GetThreatModifyer();
@@ -2803,10 +2928,34 @@ bool AIInterface::modThreatByPtr(Unit* obj, int32 mod)
 		// check for a possible decrease in threat.
 		if(mod < 0)
 		{
-			SetNextTarget(FindTargetForSpell(m_nextSpell));
+			m_nextTarget = GetMostHated();
+			//if there is no more new targets then we can walk back home ?
+			if(!m_nextTarget)
+				HandleEvent(EVENT_LEAVECOMBAT, m_Unit, 0);
+			SetNextTarget(m_nextTarget);
 		}
 	}
 	return true;
+}
+
+void AIInterface::RemoveThreatByPtr(Unit* obj)
+{
+	if(!obj)
+		return;
+	TargetMap::iterator it = m_aiTargets.find(obj);
+	if(it != m_aiTargets.end())
+	{
+		m_aiTargets.erase(it);
+		//check if we are in combat and need a new target
+		if(obj==m_nextTarget)
+		{
+			m_nextTarget = GetMostHated();
+			//if there is no more new targets then we can walk back home ?
+			if(!m_nextTarget)
+				HandleEvent(EVENT_LEAVECOMBAT, m_Unit, 0);
+			SetNextTarget(m_nextTarget);
+		}
+	}
 }
 
 void AIInterface::addAssistTargets(Unit* Friend)
@@ -2819,6 +2968,7 @@ void AIInterface::WipeHateList()
 {
 	for(TargetMap::iterator itr = m_aiTargets.begin(); itr != m_aiTargets.end(); ++itr)
 		itr->second = 0;
+	m_currentHighestThreat = 0;
 }
 
 void AIInterface::WipeTargetList()
@@ -2826,6 +2976,7 @@ void AIInterface::WipeTargetList()
 	SetNextTarget(NULL);
 
 	m_nextSpell = NULL;
+	m_currentHighestThreat = 0;
 	m_aiTargets.clear();
 }
 
@@ -2847,7 +2998,7 @@ bool AIInterface::taunt(Unit* caster, bool apply)
 		if(isHostile(m_Unit, caster))
 		{
 			//check if we have to add him to our agro list
-			GetMostHated(); //update our most hated list/ Note that at this point we do not have a taunter yet. If we would have then this funtion will not give real mosthated
+			//GetMostHated(); //update our most hated list/ Note that at this point we do not have a taunter yet. If we would have then this funtion will not give real mosthated
 			int32 oldthreat = getThreatByPtr(caster);
 			//make sure we rush the target anyway. Since we are not tauted yet, this will also set our target
 			modThreatByPtr(caster,abs(m_currentHighestThreat-oldthreat)+1); //we need to be the most hated at this moment
@@ -2900,10 +3051,24 @@ void AIInterface::CheckTarget(Unit* target)
 		m_lastFollowX = m_lastFollowY = 0;
 	}
 
+	if(target == UnitToFollow_backup)
+	{
+		UnitToFollow_backup = 0;
+	}
+
+	TargetMap::iterator it2 = m_aiTargets.find(target);
+	if(it2 != m_aiTargets.end())
+	{
+		m_aiTargets.erase(it2);
+	}
+
 	if (target == m_nextTarget)	 // no need to cast on these.. mem addresses are still the same
 	{
 		SetNextTarget(NULL);
 		m_nextSpell = NULL;
+		
+		// find the one with the next highest threat
+		GetMostHated();
 	}
 
 	if(target == UnitToFear)
@@ -2915,15 +3080,6 @@ void AIInterface::CheckTarget(Unit* target)
 	AssistTargetSet::iterator  itr = m_assistTargets.find(target);
 	if(itr != m_assistTargets.end())
 		m_assistTargets.erase(itr);
-
-	if (!m_aiTargets.size())
-		return;
-
-	TargetMap::iterator it2 = m_aiTargets.find(target);
-	if(it2 != m_aiTargets.end())
-	{
-		m_aiTargets.erase(it2);
-	}
 }
 
 uint32 AIInterface::_CalcThreat(uint32 damage, uint32 spellId, Unit* Attacker)
@@ -2951,6 +3107,7 @@ uint32 AIInterface::_CalcThreat(uint32 damage, uint32 spellId, Unit* Attacker)
 void AIInterface::WipeReferences()
 {
 	m_nextSpell = 0;
+	m_currentHighestThreat = 0;
 	m_aiTargets.clear();
 	SetNextTarget(NULL);
 	UnitToFear = 0;
@@ -2979,6 +3136,91 @@ uint32 AIInterface::GetSpellCooldown(uint32 SpellId)
 
 void AIInterface::AddSpellCooldown(SpellEntry * pSpell, AI_Spell * sp)
 {
-	uint32 Cooldown = pSpell->CategoryRecoveryTime > pSpell->RecoveryTime ? pSpell->CategoryRecoveryTime : pSpell->RecoveryTime;
-	m_spellCooldown[pSpell->Id] = getMSTime() + Cooldown;
+    uint32 Cooldown;
+    if (sp && sp->cooldown)
+    {
+		Cooldown = sp->cooldown;
+	}
+    else
+    {
+		Cooldown = pSpell->CategoryRecoveryTime > pSpell->RecoveryTime ? pSpell->CategoryRecoveryTime : pSpell->RecoveryTime;
+	}
+    m_spellCooldown[pSpell->Id] = getMSTime() + Cooldown;
+}
+
+//we only cast once a spell and we will set his health and resistances. Note that this can be made with db too !
+void AIInterface::Event_Summon_EE_totem(uint32 summon_duration)
+{
+	Unit *ourslave=m_Unit->create_guardian(329,summon_duration,-M_PI*2);
+	if(ourslave)
+	{
+		static_cast<Creature*>(ourslave)->ResistanceModPct[NATURE_DAMAGE]=100;//we should be imune to nature dmg. This can be also set in db
+		/*
+		- Earth Stun (37982)
+		- taunt
+		*/
+	}
+}
+
+//we only cast once a spell and we will set his health and resistances. Note that this can be made with db too !
+void AIInterface::Event_Summon_FE_totem(uint32 summon_duration)
+{
+	//timer should not reach this value thus not cast this spell again
+	m_totemspelltimer = 0xEFFFFFFF;
+	//creatures do not support PETs and the spell uses that effect so we force a summon guardian thing
+	Unit *ourslave=m_Unit->create_guardian(575,summon_duration,-M_PI*2);
+	if(ourslave)
+	{
+		static_cast<Creature*>(ourslave)->ResistanceModPct[FIRE_DAMAGE]=100;//we should be imune to fire dmg. This can be also set in db
+		/*
+		- also : select * from dbc_spell where name like "%fire blast%"
+		- also : select * from dbc_spell where name like "%fire nova"
+		*/
+	}
+}
+
+bool isGuard(uint32 id)
+{
+	switch(id)
+	{
+		/* stormwind guards */
+	case 68:
+	case 1423:
+	case 1756:
+	case 15858:
+	case 15859:
+	case 16864:
+	case 20556:
+	case 18948:
+	case 18949:
+	case 1642:
+		/* ogrimmar guards */
+	case 3296:
+	case 15852:
+	case 15853:
+	case 15854:
+	case 18950:
+		/* undercity guards */
+	case 5624:
+	case 18971:
+	case 16432:
+		/* exodar */
+	case 16733:
+	case 18815:
+		/* thunder bluff */
+	case 3084:
+		/* silvermoon */
+	case 16221:
+	case 17029:
+	case 16222:
+		/* ironforge */
+	case 727:
+	case 5595:
+	case 12996:
+		/* darnassus? */
+		{
+			return true;
+		}break;
+	}
+	return false;
 }

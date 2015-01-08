@@ -23,12 +23,13 @@ libshared_a_SOURCES = \
     WorldPacket.h \
     crc32.cpp \
     crc32.h \
-    TextLogger.h \
-    TextLogger.cpp \
+    FastQueue.h \
     Threading/Mutex.cpp \
     Storage.h \
-    antrix_getopt.h \
-    antrix_getopt.cpp
+    ascent_getopt.h \
+    ascent_getopt.cpp \
+    CrashHandler.h \
+    CrashHandler.cpp
 
 libauth_a_SOURCES = \
     Auth/BigNumber.cpp \

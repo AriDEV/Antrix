@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,6 +32,8 @@ bool SERVER_DECL Rand(float);
 #define UF_TARGET_DIED  1
 #define UF_ATTACKING	2 // this unit is attacking it's selection
 #define SPELL_GROUPS 32//maximum possible is 32, may be less
+
+#define UNIT_TYPE_HUMANOID_BIT (1 << (HUMANOID-1)) //should get computed by precompiler ;)
 
 class Aura;
 class Spell;
@@ -628,6 +635,7 @@ public:
 	void Strike(Unit *pVictim,uint32 damage_type,SpellEntry *ability,int32 add_damage,int32 pct_dmg_mod,uint32,bool);
 //	void PeriodicAuraLog(Unit *pVictim, SpellEntry* spellID, uint32 damage, uint32 damageType);
 	//void SpellNonMeleeDamageLog(Unit *pVictim, uint32 spellID, uint32 damage);
+	uint32 m_procCounter;
 	void HandleProc(uint32 flag, Unit* Victim, SpellEntry* CastingSpell,uint32 dmg=-1);
 	void HandleProcDmgShield(uint32 flag, Unit* Victim);//almost the same as handleproc :P
 //	void HandleProcSpellOnSpell(Unit* Victim,uint32 damage,bool critical);//nasty, some spells proc other spells
@@ -640,13 +648,15 @@ public:
 	void CastSpell(uint64 targetGuid, uint32 SpellID, bool triggered);
 	void CastSpell(uint64 targetGuid, SpellEntry* Sp, bool triggered);
 	void CastSpellAoF(float x,float y,float z,SpellEntry* Sp, bool triggered);
+	void EventCastSpell(Unit * Target, SpellEntry * Sp);
 
 	bool isCasting();
-	   void CalculateResistanceReduction(Unit *pVictim,dealdamage *dmg) ;
+    void CalculateResistanceReduction(Unit *pVictim,dealdamage *dmg) ;
 	void RegenerateHealth();
-	void RegeneratePower();
+	void RegeneratePower(bool isinterrupted);
 	inline void setHRegenTimer(uint32 time) {m_H_regenTimer = time; }
 	inline void setPRegenTimer(uint32 time) {m_P_regenTimer = time; }
+	inline void setPIRegenTimer(uint32 time) {m_P_I_regenTimer = time; }
 	void DeMorph();
 	uint32 ManaShieldAbsorb(uint32 dmg);
 	void smsg_AttackStart(Unit* pVictim);
@@ -689,6 +699,7 @@ public:
 	bool RemoveAuraByNameHash(uint32 namehash);//required to remove weaker instances of a spell
 	bool RemoveAuraPosByNameHash(uint32 namehash);//required to remove weaker instances of a spell
 	bool RemoveAuraNegByNameHash(uint32 namehash);//required to remove weaker instances of a spell
+	bool RemoveAuras(uint32 * SpellIds);
 	void EventRemoveAura(uint32 SpellId)
 	{
 		RemoveAura(SpellId);
@@ -713,6 +724,8 @@ public:
 	void castSpell(Spell * pSpell);
 	void InterruptSpell();
    
+	Unit* create_guardian(uint32 guardian_entry,uint32 duration,float angle);//guardians are temporary spawn that will inherit master faction and will folow them. Apart from that they have their own mind
+
 	uint32 m_addDmgOnce;
 	Creature *m_TotemSlots[4];
 	uint32 m_ObjectSlots[4];
@@ -763,6 +776,7 @@ public:
 	uint32 SchoolCastPrevent[7];
 	int32 GetDamageDoneMod(uint32 school);
 	float GetDamageDonePctMod(uint32 school);
+	float DamageDoneModPCT[7];
 	int32 DamageTakenMod[7];
 	float DamageTakenPctMod[7];
 	float DamageTakenPctModOnHP;
@@ -864,7 +878,7 @@ public:
 
 	//In-Range
 	virtual void AddInRangeObject(Object* pObj);
-	virtual void RemoveInRangeObject(Object* pObj);
+	virtual void OnRemoveInRangeObject(Object* pObj);
 	void ClearInRangeSet();
 
 	inline Spell * GetCurrentSpell(){return m_currentSpell;}
@@ -912,6 +926,7 @@ public:
 	int32 m_stunned;
 	bool m_invisible;
 	int32 m_extraattacks;   
+	int32 m_extrastriketargets;
 	//std::set<SpellEntry*> m_onStrikeSpells;
 
 	int32 m_noInterrupt;
@@ -923,8 +938,8 @@ public:
 	// Affect Speed
 	int32 m_speedModifier;
 	int32 m_slowdown;
-	map< uint32, pair<SpellEntry*, uint32> > speedReductionMap;
-	void GetSpeedDecrease();
+	map< uint32, int32 > speedReductionMap;
+	bool GetSpeedDecrease();
 	int32 m_mountedspeedModifier;
 	int32 m_flyspeedModifier;
 	void UpdateSpeed(bool delay = false);
@@ -990,17 +1005,20 @@ public:
 	void Root(uint32 time);
 	void Unroot();
 
+	void SetFacing(float newo);//only working if creature is idle
+
 	void RemoveAurasByBuffType(uint32 buff_type, uint64 guid);
 	bool HasAurasOfBuffType(uint32 buff_type, uint64 guid);
 	bool HasAurasWithNameHash(uint32 name_hash);
 	bool HasNegativeAuraWithNameHash(uint32 name_hash); //just to reduce search range in some cases
+	bool HasNegativeAura(uint32 spell_id); //just to reduce search range in some cases
 
 	AuraCheckResponse AuraCheck(uint32 name_hash, uint32 rank);
 	AuraCheckResponse AuraCheck(uint32 name_hash, uint32 rank, Aura* aur);
 
-	uint16 m_diminishCount[16];
-	uint8  m_diminishAuraCount[16];
-	uint16 m_diminishTimer[16];
+	uint16 m_diminishCount[23];
+	uint8  m_diminishAuraCount[23];
+	uint16 m_diminishTimer[23];
 	bool   m_diminishActive;
 
 	void SetDiminishTimer(uint32 index)
@@ -1029,6 +1047,7 @@ public:
 
 	//solo target auras
 	uint32 polySpell;
+	uint16 m_invisibityFlag;
 //	uint32 fearSpell;
 	
 protected:
@@ -1039,6 +1058,7 @@ protected:
 
 	uint32 m_H_regenTimer;
 	uint32 m_P_regenTimer;
+	uint32 m_P_I_regenTimer; //PowerInterruptedRegenTimer.
 	uint32 m_state;		 // flags for keeping track of some states
 	uint32 m_attackTimer;   // timer for attack
 	uint32 m_attackTimer_1;

@@ -1,42 +1,38 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "LogonStdAfx.h"
 #include <signal.h>
 #include "../shared/svn_revision.h"
-#include <TextLogger.h>
 #ifndef WIN32
 #include <sys/resource.h>
 #endif
-#include "../shared/antrix_getopt.h"
+#include "../shared/ascent_getopt.h"
 
-#ifdef WIN32
-#define PLATFORM_TEXT "Win32"
-#define BANNER "Antrix/Win32-2.1.2-%u :: Logon Server                        www.emupedia.com"
-#else
-#if UNIX_FLAVOUR == UNIX_FLAVOUR_LINUX
-#define PLATFORM_TEXT "Linux"
-#define BANNER "Antrix/Linux-2.1.2-%u :: Logon Server                        www.emupedia.com"
-#elif UNIX_FLAVOUR == UNIX_FLAVOUR_BSD
-#define PLATFORM_TEXT "FreeBSD"
-#define BANNER "Antrix/FreeBSD-2.1.2-%u :: Logon Server                      www.emupedia.com"
-#else
-#define PLATFORM_TEXT "Unix"
-#define BANNER "Antrix/Unix-2.1.2-%u :: Logon Server                         www.emupedia.com"
-#endif
+#define BANNER "Ascent r%u/%s-%s (%s) :: Logon Server"
+
+#ifndef WIN32
 #include <sched.h>
 #endif
+
+//#include <vld.h>
+//#include <vldapi.h>
 
 // Database impl
 Database * sLogonSQL;
@@ -44,7 +40,6 @@ initialiseSingleton(LogonServer);
 bool mrunning = true;
 Mutex _authSocketLock;
 set<AuthSocket*> _authSockets;
-TextLogger * Crash_Log;
 
 /*** Signal Handler ***/
 void _OnSignal(int s)
@@ -89,6 +84,7 @@ int main(int argc, char** argv)
 
 	// Run!
 	LogonServer::getSingleton( ).Run(argc, argv);
+	delete LogonServer::getSingletonPtr();
 }
 
 bool startdb()
@@ -133,6 +129,7 @@ bool startdb()
 
 void LogonServer::Run(int argc, char ** argv)
 {
+	UNIXTIME = time(NULL);
 #ifdef WIN32
 	char * config_file = "logonserver.conf";
 #else
@@ -143,25 +140,25 @@ void LogonServer::Run(int argc, char ** argv)
 	int do_check_conf = 0;
 	int do_version = 0;
 
-	struct antrix_option longopts[] =
+	struct ascent_option longopts[] =
 	{
-		{ "checkconf",			antrix_no_argument,				&do_check_conf,			1		},
-		{ "screenloglevel",		antrix_required_argument,		&screen_log_level,		1		},
-		{ "fileloglevel",		antrix_required_argument,		&file_log_level,		1		},
-		{ "version",			antrix_no_argument,				&do_version,			1		},
-		{ "conf",				antrix_required_argument,		NULL,					'c'		},
+		{ "checkconf",			ascent_no_argument,				&do_check_conf,			1		},
+		{ "screenloglevel",		ascent_required_argument,		&screen_log_level,		1		},
+		{ "fileloglevel",		ascent_required_argument,		&file_log_level,		1		},
+		{ "version",			ascent_no_argument,				&do_version,			1		},
+		{ "conf",				ascent_required_argument,		NULL,					'c'		},
 		{ 0, 0, 0, 0 }
 	};
 
 	char c;
-	while ((c = antrix_getopt_long_only(argc, argv, ":f:", longopts, NULL)) != -1)
+	while ((c = ascent_getopt_long_only(argc, argv, ":f:", longopts, NULL)) != -1)
 	{
 		switch (c)
 		{
 		case 'c':
 			/* Log filename was set */
-			config_file = new char[strlen(antrix_optarg)];
-			strcpy(config_file,antrix_optarg);
+			config_file = new char[strlen(ascent_optarg)];
+			strcpy(config_file,ascent_optarg);
 			break;
 		case 0:
 			break;
@@ -176,7 +173,6 @@ void LogonServer::Run(int argc, char ** argv)
 	// Startup banner
 	if(!do_version && !do_check_conf)
 	{
-		launch_thread(new TextLoggerThread);
 		sLog.Init(-1, 3);
 	}
 	else
@@ -184,12 +180,8 @@ void LogonServer::Run(int argc, char ** argv)
 		sLog.m_fileLogLevel = -1;
 		sLog.m_screenLogLevel = 3;
 	}
-
-	sLog.outString("==============================================================================");
-	sLog.outString(BANNER, g_getRevision());
-	sLog.outString("");
-	sLog.outString("Copyright (c) 2007 Antrix Team. This software is under the QPL license, for");
-	sLog.outString("more information look under the COPYING file in this distribution.");
+	
+	sLog.outString(BANNER, g_getRevision(), CONFIG, PLATFORM_TEXT, ARCH);
 	sLog.outString("==============================================================================");
 	sLog.outString("");
 	if(do_version)
@@ -210,51 +202,42 @@ void LogonServer::Run(int argc, char ** argv)
 		return;
 	}
 	
-	Crash_Log = new TextLogger(FormatOutputString("logs", "logonCrashLog", true).c_str(), false);
 	sLog.outString("The key combination <Ctrl-C> will safely shut down the server at any time.");
 	sLog.outString("");
-	sLog.outString("Initializing Random Number Generators...");
+	Log.Notice("System","Initializing Random Number Generators...");
 
-	sLog.outColor(TNORMAL, "Loading Config Files...\n");
-	sLog.outColor(TYELLOW, "  >> %s :: ", config_file);
+	Log.Notice("Config", "Loading Config Files...");
+	
 	if(Config.MainConfig.SetSource(config_file))
 	{
-		sLog.outColor(TGREEN, "ok!");
-		sLog.outColor(TNORMAL, "\n\n");
+		Log.Success("Config", ">> logonserver.conf", config_file);
 	}
 	else
 	{
-		sLog.outColor(TRED, "failed.");
-		sLog.outColor(TNORMAL, "\n\n");
+		Log.Error("Config", ">> logonserver.conf", config_file);
 		return;
 	}
-
+	Log.Notice("ThreadMgr", "Starting...");
+	new ThreadMgr;
+	ThreadMgr::getSingleton( ).Initialize();
    
-	sLog.outColor(TNORMAL, "\n >> establishing database connection...");
-	sLog.outColor(TGREEN, " ok!\n");
-
-	sLog.outColor(TNORMAL, " >> starting: thread manager...");
-		new ThreadMgr;
-		ThreadMgr::getSingleton( ).Initialize();
-	
 	if(!startdb())
 		return;
 
-	sLog.outColor(TGREEN, " ok!\n");
 
-	sLog.outColor(TNORMAL, " >> starting: account manager...");
-		new AccountMgr;
-		new IPBanner;
-	sLog.outColor(TGREEN, " ok!\n");
+	
+	Log.Notice("AccountMgr", "Starting...");
+	new AccountMgr;
+	new IPBanner;
 
-	sLog.outColor(TNORMAL, " >> starting: information core...");
-		new InformationCore;
-	sLog.outColor(TGREEN, " ok!\n");
+	Log.Notice("InfoCore", "Starting...");
+	new InformationCore;
 
-	sLog.outColor(TNORMAL, " >> precaching accounts...");
-		sAccountMgr.ReloadAccounts(true);
-	sLog.outColor(TGREEN, " %u accounts.\n", sAccountMgr.GetCount());
-	sLog.outColor(TNORMAL, "\n");
+	Log.Notice("AccountMgr", "Precaching accounts...");
+	sAccountMgr.ReloadAccounts(true);
+	Log.Notice("AccountMgr", "%u accounts are loaded and ready.", sAccountMgr.GetCount());
+	Log.Line();
+
 
 	// Spawn periodic function caller thread for account reload every 10mins
 	int time = Config.MainConfig.GetIntDefault("Rates", "AccountRefresh",600);
@@ -304,6 +287,19 @@ void LogonServer::Run(int argc, char ** argv)
 	signal(SIGHUP, _OnSignal);
 #endif
 
+		/* write pid file */
+	FILE * fPid = fopen("logonserver.pid", "w");
+	if(fPid)
+	{
+		uint32 pid;
+#ifdef WIN32
+		pid = GetCurrentProcessId();
+#else
+		pid = getpid();
+#endif
+		fprintf(fPid, "%u", (unsigned int)pid);
+		fclose(fPid);
+	}
 	uint32 loop_counter = 0;
 
 	while(mrunning && authsockcreated && intersockcreated)
@@ -320,13 +316,18 @@ void LogonServer::Run(int argc, char ** argv)
 
 	sLog.outString("Shutting down...");
 	pfc->kill();
+	delete pfc;
 
 	cl->Close();
 	sl->Close();
 	delete sl;
 	delete cl;
 	sSocketMgr.CloseAll();
-	sLogonConsole.kill();
+#ifdef WIN32
+	sSocketMgr.ShutdownThreads();
+#endif
+	sLogonConsole.Kill();
+	delete LogonConsole::getSingletonPtr();
 
 	// kill db
 	sThreadMgr.RemoveThread((MySQLDatabase*)sLogonSQL);
@@ -342,17 +343,16 @@ void LogonServer::Run(int argc, char ** argv)
 
 	sThreadMgr.Shutdown();
 
+	// delete pid file
+	remove("logonserver.pid");
+
 	delete AccountMgr::getSingletonPtr();
 	delete InformationCore::getSingletonPtr();
 	delete ThreadMgr::getSingletonPtr();
 	delete IPBanner::getSingletonPtr();
 	delete SocketMgr::getSingletonPtr();
 	delete SocketGarbageCollector::getSingletonPtr();
-#ifdef WIN32
-	//TerminateProcess(GetCurrentProcess(), 0);
-#else
-	printf("Hit any key to exit.\n");
-#endif
+	printf("Shutdown complete.\n");
 }
 
 void OnCrash(bool Terminate)

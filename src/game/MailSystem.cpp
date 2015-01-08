@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -17,11 +22,8 @@ initialiseSingleton(MailSystem);
 
 void MailSystem::StartMailSystem()
 {
-	sLog.outString("Starting Mail System...");
-	sLog.outString("");
+	Log.Notice("MailSystem", "Starting Mail System...");
 	LoadMessages();
-	sLog.outString("");
-	sLog.outString("Mail System Ready!");
 }
 
 void MailSystem::ShutdownMailSystem()
@@ -165,7 +167,7 @@ bool MailMessage::AddMessageDataToPacket(WorldPacket& data)
 	{
 		stringstream ss;
 		ss << "SELECT `entry`, `count`, `charges`, `durability` FROM playeritems WHERE guid='"
-			<< attached_item_guid << "'";
+			<< GUID_LOPART(attached_item_guid) << "'";
 		
 		QueryResult * result = CharacterDatabase.Query(ss.str().c_str());
 		if(result)
@@ -262,6 +264,13 @@ void WorldSession::HandleSendMail(WorldPacket & recv_data )
 		return;
 	}
 
+	// Check if we're sending mail to ourselves
+	if(player->name == _player->GetName())
+	{
+		SendMailError(MAIL_ERR_CANNOT_SEND_TO_SELF);
+		return;
+	}
+
 	// Instant delivery time by default.
 	msg.delivery_time = time(NULL);
 
@@ -298,10 +307,16 @@ void WorldSession::HandleSendMail(WorldPacket & recv_data )
 		// Save the item with no owner (to objectmgr)
 		attached_item->RemoveFromWorld();
 		attached_item->SetOwner(NULL);
-		attached_item->SaveToDB(INVENTORY_SLOT_NOT_SET, 0);
+		attached_item->SaveToDB(INVENTORY_SLOT_NOT_SET, 0,true);
 
 		// Cut out the high part of the attached item.
 		msg.attached_item_guid = attached_item->GetGUID();
+
+		if(GetPermissionCount() > 0)
+		{
+			/* log the message */
+			sGMLog.writefromsession(this, "sent mail with item entry %u to %s, with gold %u.", attached_item->GetEntry(), player->name.c_str(), msg.money);
+		}
 
 		// Delete from memory now, its not needed anymore.
 		delete attached_item;
@@ -508,40 +523,12 @@ void WorldSession::HandleTakeItem(WorldPacket & recv_data )
 	data << uint32(MAIL_OK);
 	SendPacket(&data);
 	
-	// COD really makes this hell here. it means if the player isn't online, we gotta load them,
-	// change the coinage value and save them :(
-	if(message->cod > 0)
+	if( message->cod > 0 )
 	{
-		// take the cod charges from us
 		_player->ModUInt32Value(PLAYER_FIELD_COINAGE, -int32(message->cod));
-		Player * sender = objmgr.GetPlayer(message->sender_guid);
-		if(sender != 0)
-		{
-			// player is inworld... this is easy..
-			// prevent from executing in wrong context
-			uint32 field = PLAYER_FIELD_COINAGE;
-			if(sender->GetInstanceID() != _player->GetInstanceID())
-				sEventMgr.AddEvent(((Object*)sender), &Object::ModUInt32Value, field, (int32)message->cod, EVENT_DELETE_TIMER, 1, 1);
-			else
-				sender->ModUInt32Value(PLAYER_FIELD_COINAGE, message->cod);
-
-			// might as well send them a message
-			ChatHandler::getSingleton().SystemMessageToPlr(sender, "%s pays you %u copper for your %s (via cash on delivery).", 
-				_player->GetName(), message->cod, item->GetProto()->Name1);
-		}
-		else
-		{
-			// this is the hard part, the player is offline so we need to load them, 
-			// mod, and resave.
-			QueryResult * result = CharacterDatabase.Query("SELECT gold FROM characters WHERE guid=%u", message->sender_guid);
-			if(result)
-			{
-				uint32 gold = result->Fetch()[0].GetUInt32();
-				gold += message->cod;
-				delete result;
-				CharacterDatabase.Execute("UPDATE characters SET gold = %u WHERE guid=%u", gold, message->sender_guid);
-			}
-		}
+		string subject = "COD Payment: ";
+		subject += message->subject;
+		sMailSystem.SendAutomatedMessage(NORMAL, message->player_guid, message->sender_guid, subject, "", message->cod, 0, 0, 1);
 	}
 
 	// prolly need to send an item push here
@@ -829,7 +816,7 @@ void MailSystem::PeriodicMailRefresh()
 
 void MailSystem::LoadMessages()
 {
-	sLog.outString("  Creating/Loading Mailboxes...");
+	Log.Notice("MailSystem", "Creating/Loading Mailboxes...");
 
 	uint32 high = 0;
 	QueryResult * result = CharacterDatabase.Query("SELECT * FROM mailbox");
@@ -880,14 +867,14 @@ void MailSystem::LoadMessages()
 	}
 	message_high = high;
 
-	sLog.outString("  Removing expired messages...");
+	Log.Notice("MailSystem", "Deleting expired messages...");
 	MailboxMap::iterator iter;
 	for(iter = Mailboxes.begin(); iter != Mailboxes.end(); ++iter)
 	{
 		iter->second->CleanupExpiredMessages();
 	}
 
-	sLog.outString("  Deleting expired mailboxes...");
+	Log.Notice("MailSystem", "Deleting expired mailboxes...");
 	Mailbox * dbox;
 	for(iter = Mailboxes.begin(); iter != Mailboxes.end();)
 	{

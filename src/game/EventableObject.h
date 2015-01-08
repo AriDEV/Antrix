@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,6 +33,7 @@ typedef list<TimedEvent*> EventList;
 typedef multimap<uint32, TimedEvent*> EventMap;
 
 #define EVENT_REMOVAL_FLAG_ALL 0xFFFFFFFF
+#define WORLD_INSTANCE -1
 
 class SERVER_DECL EventableObject
 {
@@ -62,7 +68,7 @@ public:
 protected:
 
 	int32 m_event_Instanceid;
-	Mutex m_lock;
+	FastMutex m_lock;
 	EventMap m_events;
 	EventableObjectHolder * m_holder;
 	

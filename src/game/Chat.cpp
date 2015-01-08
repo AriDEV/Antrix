@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Chat/Command System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -159,6 +164,7 @@ void CommandTableStorage::Dealloc()
 	free( _petCommandTable );
 	free( _recallCommandTable );
 	free( _honorCommandTable );
+	free( _commandTable );
 }
 
 void CommandTableStorage::Init()
@@ -327,7 +333,6 @@ void CommandTableStorage::Init()
 		{ "spawnlink", 'n', &ChatHandler::HandleNpcSpawnLinkCommand, ".spawnlink sqlentry", NULL, 0, 0, 0 },
 		{ "possess", 'n', &ChatHandler::HandleNpcPossessCommand, ".npc possess - Possess an npc (mind control)", NULL, 0, 0, 0 },
 		{ "unpossess", 'n', &ChatHandler::HandleNpcUnPossessCommand, ".npc unpossess - Unposses any currently possessed npc.", NULL, 0, 0, 0 },
-		{ "masssummon", 'z', &ChatHandler::HandleMassSummonCommand, ".masssummon - Summons all players.", NULL, 0, 0, 0},
 		{ NULL,		  2, NULL,						   "",										   NULL, 0, 0  }
 	};
 	dupe_command_table(NPCCommandTable, _NPCCommandTable);
@@ -385,6 +390,9 @@ void CommandTableStorage::Init()
 	dupe_command_table(recallCommandTable, _recallCommandTable);
 
 	static ChatCommand commandTable[] = {
+		{ "renameguild", 'a', &ChatHandler::HandleRenameGuildCommand, "Renames a guild.", NULL, 0, 0, 0 },
+		{ "addguard",   'a', &ChatHandler::HandleAddGuardCommand, "Adds a guardentry to the zonetables DB and reloads.", NULL, 0, 0, 0},
+		{ "masssummon", 'z', &ChatHandler::HandleMassSummonCommand, ".masssummon - Summons all players.", NULL, 0, 0, 0},
 		{ "commands",	1, &ChatHandler::HandleCommandsCommand,		"Shows Commands",				 NULL, 0, 0, 0},
 		{ "help",		1, &ChatHandler::HandleHelpCommand,			"Shows help for command",		 NULL, 0, 0, 0},
 
@@ -485,7 +493,8 @@ void CommandTableStorage::Init()
 		{ "formationlink2", 'm', &ChatHandler::HandleFormationLink2Command, "Sets formation slave with distance and angle", NULL, 0, 0, 0 },
 		{ "formationclear", 'm', &ChatHandler::HandleFormationClearCommand, "Removes formation from creature", NULL, 0, 0, 0 },
 		{ "playall", 'm', &ChatHandler::HandleGlobalPlaySoundCommand, "Plays a sound to the entire server.", NULL, 0, 0, 0 },
-		{ "addipban", 'm', &ChatHandler::HandleIPBanCommand, "Bans an ip address <address/mask> <duration, 0=perm>", NULL, 0, 0, 0 },
+		{ "addipban", 'm', &ChatHandler::HandleIPBanCommand, "Adds an address to the IP ban table: <address> [duration]\nDuration must be a number optionally followed by a character representing the calendar subdivision to use (h>hours, d>days, w>weeks, m>months, y>years, default minutes)\nLack of duration results in a permanent ban.", NULL, 0, 0, 0 },
+		{ "delipban", 'm', &ChatHandler::HandleIPUnBanCommand, "Deletes an address from the IP ban table: <address>", NULL, 0, 0, 0},
 		{ "banaccounts", 'm', &ChatHandler::HandleBanAccountCommand, "Bans accounts <name> <duration, 0=perm>", NULL, 0, 0, 0 },
 		{ "renamechar", 'm', &ChatHandler::HandleRenameCommand, "Renames character x to y.", NULL, 0, 0, 0 },
 		{ "forcerenamechar", 'm', &ChatHandler::HandleForceRenameCommand, "Forces character x to rename his char next login", NULL, 0, 0, 0 },
@@ -635,7 +644,6 @@ bool ChatHandler::ExecuteCommandInTable(ChatCommand *table, const char* text, Wo
 
 		return true;
 	}
-
 	return false;
 }
 
@@ -669,14 +677,14 @@ int ChatHandler::ParseCommands(const char* text, WorldSession *session)
 
 WorldPacket * ChatHandler::FillMessageData( uint32 type, uint32 language, const char *message,uint64 guid , uint8 flag) const
 {
-	//Packet structure
-	//uint8	  type;
-	//uint32	 language;
-	//uint64	 guid;
-	//uint64	 guid;
-	//uint32	  len_of_text;
-	//char	   text[];		 // not sure ? i think is null terminated .. not null terminated
-	//uint8	  afk_state;
+	//Packet    structure
+	//uint8	    type;
+	//uint32	language;
+	//uint64	guid;
+	//uint64	guid;
+	//uint32	len_of_text;
+	//char	    text[];		 // not sure ? i think is null terminated .. not null terminated
+	//uint8	    afk_state;
 	ASSERT(type != CHAT_MSG_CHANNEL);
 	   //channels are handled in channel handler and so on
 	uint32 messageLength = strlen((char*)message) + 1;
@@ -694,7 +702,6 @@ WorldPacket * ChatHandler::FillMessageData( uint32 type, uint32 language, const 
 	*data << messageLength;
 	*data << message;
 
-	//*data << uint8(0);	// afk
 	*data << uint8(flag);
 	return data;
 }
@@ -703,7 +710,7 @@ WorldPacket* ChatHandler::FillSystemMessageData(const char *message) const
 {
 	uint32 messageLength = strlen((char*)message) + 1;
 
-	WorldPacket * data = new WorldPacket(SMSG_MESSAGECHAT, 20 + messageLength);
+	WorldPacket * data = new WorldPacket(SMSG_MESSAGECHAT, 30 + messageLength);
 	*data << (uint8)CHAT_MSG_SYSTEM;
 	*data << (uint32)LANG_UNIVERSAL;
 	

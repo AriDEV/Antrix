@@ -144,6 +144,7 @@ copy ..\..\dep\lib\*.dll ..\..\bin\debug
     <ClCompile Include="..\..\src\antrix\CConsole.cpp" />
     <ClCompile Include="..\..\src\antrix\Main.cpp" />
     <ClCompile Include="..\..\src\antrix\Master.cpp" />
+    <ClCompile Include="..\..\src\antrix\usewinhoard.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\antrix\CConsole.h" />

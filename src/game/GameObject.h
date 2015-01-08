@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -124,7 +129,7 @@ public:
 
 	virtual void Update(uint32 p_time);
 
-	void Spawn();
+	void Spawn(MapMgr * m);
 	void Despawn(uint32 time);
 	Loot loot;
 	//void _EnvironmentalDamageUpdate();
@@ -186,7 +191,7 @@ public:
 	float range;
 	uint32 checkrate;
 	uint32 counter;
-	uint32 charges;//used for type==22,to limit number of usages.
+	int32 charges;//used for type==22,to limit number of usages.
 	bool invisible;//invisible
 	INVISIBILTY_FLAG invisibilityFlag;
 	Unit* m_summoner;
@@ -204,8 +209,13 @@ public:
 	inline bool HasAI() { return spell != 0; }
 	GOSpawn * m_spawn;
 	void OnPushToWorld();
-	void RemoveInRangeObject(Object* pObj);
+	void OnRemoveInRangeObject(Object* pObj);
 	void RemoveFromWorld();
+
+	inline bool CanMine(){return mines_remaining != 1 && mines_remaining > 0;}
+	inline void UseMine(){ if(mines_remaining) mines_remaining--;}
+    bool HasLoot();
+	MapCell * m_respawnCell;
 
 protected:
 
@@ -214,6 +224,7 @@ protected:
 	GameObjectInfo *pInfo;
 	GameObjectAIScript * myScript;
 	uint32 _fields[GAMEOBJECT_END];
+	uint32 mines_remaining; //used for mining to mark times it can be mined
 
 };
 

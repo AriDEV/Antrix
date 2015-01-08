@@ -1,24 +1,42 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * AI Interface
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #ifndef WOWSERVER_AIINTERFACE_H
 #define WOWSERVER_AIINTERFACE_H
 
+/* platforms that already define M_PI in math.h */
+#ifdef M_PI
+#undef M_PI
+#endif
+
 #define M_PI	   3.14159265358979323846
 #define UNIT_MOVEMENT_INTERPOLATE_INTERVAL 400/*750*/ // ms smoother server/client side moving vs less cpu/ less b/w
-#define TARGET_UPDATE_INTERVAL 500 // ms
+#define TARGET_UPDATE_INTERVAL 600 // ms
 #define oocr 50.0f // out of combat range
+#define PLAYER_SIZE 1.5f
+
+#define ENABLE_CREATURE_DAZE
+#ifdef ENABLE_CREATURE_DAZE
+	#define CREATURE_SPELL_TO_DAZE 1604
+	#define CREATURE_CHANCE_TO_DAZE 20
+	#define CREATURE_DAZE_TRIGGER_ANGLE M_PI/2 //for the beginners this means 45 degrees 
+#endif
 
 class Object;
 class Creature;
@@ -35,6 +53,7 @@ enum AIType
 	AITYPE_SOCIAL,
 	AITYPE_PET,
 	AITYPE_TOTEM,
+	AITYPE_GUARDIAN, //we got a master but he cannot control us, we follow and battle oposite factions
 };
 
 enum MovementType
@@ -143,6 +162,8 @@ struct AI_Spell
 	uint32 entryId;
 	uint16 agent;
 	uint32 procChance;
+	//int32 procCount;
+	//uint32 procCountDB;
 	SpellEntry * spell;
 	uint8 spellType;
 	uint8 spelltargetType;
@@ -152,6 +173,9 @@ struct AI_Spell
 	float minrange;
 	float maxrange;
 };
+
+bool isGuard(uint32 id);
+uint32 getGuardId(uint32 id);
 
 typedef HM_NAMESPACE::hash_map<Unit*, int32> TargetMap;
 typedef std::set<Unit*> AssistTargetSet;
@@ -184,8 +208,9 @@ public:
 	uint32	getThreatByGUID(uint64 guid);
 	uint32	getThreatByPtr(Unit* obj);
 	Unit	*GetMostHated();
-	bool modThreatByGUID(uint64 guid, int32 mod);
-	bool modThreatByPtr(Unit* obj, int32 mod);
+	bool	modThreatByGUID(uint64 guid, int32 mod);
+	bool	modThreatByPtr(Unit* obj, int32 mod);
+	void	RemoveThreatByPtr(Unit* obj);
 	inline AssistTargetSet GetAssistTargets() { return m_assistTargets; }
 	inline TargetMap *GetAITargets() { return &m_aiTargets; }
 	void addAssistTargets(Unit* Friends);
@@ -210,6 +235,8 @@ public:
 	void OnDeath(Object* pKiller);
 	void AttackReaction(Unit *pUnit, uint32 damage_dealt, uint32 spellId = 0);
 	bool HealReaction(Unit* caster, Unit* victim, uint32 amount);
+	void Event_Summon_EE_totem(uint32 summon_duration);
+	void Event_Summon_FE_totem(uint32 summon_duration);
 
 	// Update
 	void Update(uint32 p_time);
@@ -292,6 +319,16 @@ public:
 		else m_Unit->SetUInt64Value(UNIT_FIELD_TARGET, 0);
 	}
 
+	/*inline void ResetProcCounts()
+	{
+		AI_Spell * sp;
+		for(list<AI_Spell*>::iterator itr = m_spells.begin(); itr != m_spells.end(); ++itr)
+				{
+					sp = *itr;
+					sp->procCount =sp->procCountDB;
+				}
+	}*/
+
 	Creature * m_formationLinkTarget;
 	float m_formationFollowDistance;
 	float m_formationFollowAngle;
@@ -300,14 +337,13 @@ public:
 	void WipeReferences();
 	WayPointMap *m_waypoints;
 	inline void SetPetOwner(Unit * owner) { m_PetOwner = owner; }
-
-	bool b_isAttackableOld; //used for determining when a totem is to stop affected the m_nextTarget
-   
+ 
 	map<uint32, uint32> m_spellCooldown;
 	list<AI_Spell*> m_spells;
 	uint32 __fastcall GetSpellCooldown(uint32 SpellId);
 	void __fastcall AddSpellCooldown(SpellEntry * pSpell, AI_Spell * sp);
 	bool disable_melee;
+	bool waiting_for_cooldown;
 	uint32 next_spell_time;
 
 	void CheckNextSpell(AI_Spell * sp)
@@ -318,6 +354,9 @@ public:
 
 	inline void SetWaypointMap(WayPointMap * m) { m_waypoints = m; }
 	bool m_hasWaypointEvents;
+	bool m_isGuard;
+	bool m_fastMove;
+	void setGuardTimer(uint32 timer) { m_guardTimer = timer; }
 
 private:
 	bool m_AllowedToEnterCombat;

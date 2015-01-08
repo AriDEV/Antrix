@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -19,8 +24,8 @@ class Unit;
 
 enum HIGHGUID {
 	HIGHGUID_PLAYER		= 0x00000000,
-	HIGHGUID_UNIT		  = 0x00000001,
-	HIGHGUID_GAMEOBJECT	= 0x00000002,
+	HIGHGUID_UNIT		= 0x00000001,
+	HIGHGUID_GAMEOBJECT	= 0x00000002, //0x1FAA0000, //0x1FA70000, elevators 0x1FAA0000 for trams(only this one works for elevators but not for trams lol)
 	HIGHGUID_CORPSE		= 0x00000003,
 	HIGHGUID_DYNAMICOBJECT = 0x00000004,
 	HIGHGUID_ITEM		  = 0x00000005,
@@ -111,7 +116,11 @@ public:
 	virtual void RemoveFromWorld();
 
 	// guid always comes first
+#ifndef USING_BIG_ENDIAN
 	inline const uint64& GetGUID() const { return *((uint64*)m_uint32Values); }
+#else
+	inline const uint64 GetGUID() const { return GetUInt64Value(0); }
+#endif
 	inline const WoWGuid& GetNewGUID() const { return m_wowGuid; }
 	inline uint32 GetEntry(){return m_uint32Values[3];}
 	
@@ -125,6 +134,7 @@ public:
 	//! This includes any nested objects we have, inventory for example.
 	virtual uint32 __fastcall BuildCreateUpdateBlockForPlayer( ByteBuffer *data, Player *target );
 	uint32 __fastcall BuildValuesUpdateBlockForPlayer( ByteBuffer *buf, Player *target );
+	uint32 __fastcall BuildValuesUpdateBlockForPlayer( ByteBuffer * buf, UpdateMask * mask );
 	uint32 __fastcall BuildOutOfRangeUpdateBlock( ByteBuffer *buf );
 
 	WorldPacket* BuildFieldUpdatePacket(uint32 index,uint32 value);
@@ -186,10 +196,19 @@ public:
 	}
 
 	//! Get uint64 property
+#ifdef USING_BIG_ENDIAN
+        __inline const uint64 GetUInt64Value( uint32 index ) const
+#else
 	inline const uint64& GetUInt64Value( uint32 index ) const
+#endif
 	{
 		ASSERT( index + uint32(1) < m_valuesCount );
+#ifdef USING_BIG_ENDIAN
+		/* these have to be swapped here :< */
+		return uint64((uint64(m_uint32Values[index+1]) << 32) | m_uint32Values[index]);
+#else
 		return *((uint64*)&(m_uint32Values[ index ]));
+#endif
 	}
 
 	//! Get float property
@@ -215,6 +234,12 @@ public:
 		return ((uint8*)m_uint32Values)[i*4+i1];
 	}
 	
+	inline void SetNewGuid(uint32 Guid)
+	{
+		SetUInt32Value(OBJECT_FIELD_GUID, Guid);
+		m_wowGuid.Init(GetGUID());
+	}
+
 	void __fastcall SetUInt32Value( const uint32 index, const uint32 value );
 
 	//! Set uint64 property
@@ -289,29 +314,32 @@ public:
 	// In-range object management, not sure if we need it
 	inline bool IsInRangeSet(Object* pObj) { return !(m_objectsInRange.find(pObj) == m_objectsInRange.end()); }
 	
-	inline virtual void AddInRangeObject(Object* pObj)
+	virtual void AddInRangeObject(Object* pObj)
 	{
-#ifdef _DEBUG
 		if(!pObj)
-		{
-			sLog.outError("ERROR : trying to add a null object from inrange set");
-			return;//wellt his should not happen, but theory is far from practice
-		}
-#endif
+			return;
+
 		m_objectsInRange.insert(pObj);
 		if(pObj->GetTypeId() == TYPEID_PLAYER)
 			m_inRangePlayers.insert( ((Player*)pObj) );
 	}
-	inline virtual void RemoveInRangeObject(Object* pObj)
+
+	inline void RemoveInRangeObject(Object* pObj)
 	{
-#ifdef _DEBUG
 		if(!pObj)
-		{
-			sLog.outError("ERROR : trying to remove a null object from inrange set");
-			return;//wellt his should not happen, but theory is far from practice
-		}
-#endif
+			return;
+
+		OnRemoveInRangeObject(pObj);
 		m_objectsInRange.erase(pObj);
+	}
+
+	inline bool HasInRangeObjects()
+	{
+		return (m_objectsInRange.size() > 0);
+	}
+
+	virtual void OnRemoveInRangeObject(Object * pObj)
+	{
 		if(pObj->GetTypeId() == TYPEID_PLAYER)
 			ASSERT(m_inRangePlayers.erase( ((Player*)pObj) ) == 1);
 	}
@@ -326,6 +354,34 @@ public:
 	inline uint32 GetInRangeCount() { return m_objectsInRange.size(); }
 	inline InRangeSet::iterator GetInRangeSetBegin() { return m_objectsInRange.begin(); }
 	inline InRangeSet::iterator GetInRangeSetEnd() { return m_objectsInRange.end(); }
+	inline InRangeSet::iterator FindInRangeSet(Object * obj) { return m_objectsInRange.find(obj); }
+	void RemoveInRangeObject(InRangeSet::iterator itr)
+	{ 
+		OnRemoveInRangeObject(*itr);
+		m_objectsInRange.erase(itr);
+	}
+	inline bool RemoveIfInRange(Object * obj)
+	{
+		InRangeSet::iterator itr = m_objectsInRange.find(obj);
+		if(obj->GetTypeId() == TYPEID_PLAYER)
+			m_inRangePlayers.erase(((Player*)obj));
+
+		if(itr == m_objectsInRange.end())
+			return false;
+		
+		m_objectsInRange.erase(itr);
+		return true;
+	}
+
+	inline void AddInRangePlayer(Object * obj)
+	{
+		m_inRangePlayers.insert(((Player*)obj));
+	}
+
+	inline void RemoveInRangePlayer(Object * obj)
+	{
+		m_inRangePlayers.erase(((Player*)obj));
+	}
 
 	bool IsInRangeOppFactSet(Object* pObj) { return (m_oppFactsInRange.count(pObj) > 0); }
 	void UpdateOppFactionSet();
@@ -396,6 +452,8 @@ public:
 	}
 
 	void GMScriptEvent(void * function, uint32 argc, uint32 * argv, uint32 * argt);
+	inline uint32 GetInRangeOppFactCount() { return m_oppFactsInRange.size(); }
+
 
 protected:
 	Object (  );

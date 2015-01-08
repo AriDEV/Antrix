@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -30,17 +35,38 @@ public:
 
 	/** Acquires this mutex. If it cannot be acquired immediately, it will block.
 	 */
-	void Acquire();
+	inline void Acquire()
+	{
+#ifndef WIN32
+		pthread_mutex_lock(&mutex);
+#else
+		EnterCriticalSection(&cs);
+#endif
+	}
 
 	/** Releases this mutex. No error checking performed
 	 */
-	void Release();
+	inline void Release()
+	{
+#ifndef WIN32
+		pthread_mutex_unlock(&mutex);
+#else
+		LeaveCriticalSection(&cs);
+#endif
+	}
 
 	/** Attempts to acquire this mutex. If it cannot be acquired (held by another thread)
 	 * it will return false.
 	 * @return false if cannot be acquired, true if it was acquired.
 	 */
-	bool AttemptAcquire();
+	inline bool AttemptAcquire()
+	{
+#ifndef WIN32
+		return (pthread_mutex_trylock(&mutex) == 0);
+#else
+		return TryEnterCriticalSection(&cs);
+#endif
+	}
 
 protected:
 #ifdef WIN32
@@ -59,6 +85,72 @@ protected:
 	pthread_mutex_t mutex;
 #endif
 };
+
+#ifdef WIN32
+
+class SERVER_DECL FastMutex
+{
+#pragma pack(push,8)
+	volatile long m_lock;
+#pragma pack(pop)
+	DWORD m_recursiveCount;
+
+public:
+	inline FastMutex() : m_lock(0),m_recursiveCount(0) {}
+	inline ~FastMutex() {}
+
+	inline void Acquire()
+	{
+		DWORD thread_id = GetCurrentThreadId(), owner;
+		if(thread_id == m_lock)
+		{
+			++m_recursiveCount;
+			return;
+		}
+
+		for(;;)
+		{
+			owner = InterlockedCompareExchange(&m_lock, thread_id, 0);
+			if(owner == 0)
+				break;
+
+			Sleep(0);
+		}
+
+		++m_recursiveCount;
+	}
+
+	inline bool AttemptAcquire()
+	{
+		DWORD thread_id = GetCurrentThreadId();
+		if(thread_id == m_lock)
+		{
+			++m_recursiveCount;
+			return true;
+		}
+
+		DWORD owner = InterlockedCompareExchange(&m_lock, thread_id, 0);
+		if(owner == 0)
+		{
+			++m_recursiveCount;
+			return true;
+		}
+
+		return false;
+	}
+
+	inline void Release()
+	{
+		if((--m_recursiveCount) == 0)
+			InterlockedExchange(&m_lock, 0);
+	}
+};
+
+#else
+
+#define FastMutex Mutex
+
+#endif
 
 #endif
 

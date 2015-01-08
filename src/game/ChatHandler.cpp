@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Chat/Command System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -31,6 +36,12 @@ void WorldSession::HandleMessagechatOpcode( WorldPacket & recv_data )
 	const char * pMsg = 0;
 	recv_data >> type;
 	recv_data >> lang;
+
+	if(GetPlayer()->IsBanned())
+	{
+		GetPlayer()->BroadcastMessage("You cannot do that when banned.");
+		return;
+	}
 
 	if(lang != -1 && !GetPermissionCount() && sWorld.flood_lines)
 	{
@@ -140,10 +151,13 @@ void WorldSession::HandleMessagechatOpcode( WorldPacket & recv_data )
 
 				if(sgr)
 				{
+					_player->GetGroup()->Lock();
 					for(GroupMembersSet::iterator itr = sgr->GetGroupMembersBegin(); itr != sgr->GetGroupMembersEnd(); ++itr)
 					{
-						(*itr)->GetSession()->SendPacket(data);
+						if(itr->player)
+							itr->player->GetSession()->SendPacket(data);
 					}
+					_player->GetGroup()->Unlock();
 				}
 			}
 			else
@@ -173,7 +187,8 @@ void WorldSession::HandleMessagechatOpcode( WorldPacket & recv_data )
 						pGuild->BroadCastToGuild(this, msg);
 					else
 					{
-						WorldPacket data2(SMSG_GUILD_COMMAND_RESULT, 100);
+                        
+						WorldPacket data2(SMSG_GUILD_COMMAND_RESULT, 8 + pGuild->GetGuildName().size() + 1);
 						data2 << uint32(GUILD_MEMBER_S);
 						data2 << pGuild->GetGuildName();
 						data2 << uint32(C_R_DONT_HAVE_PERMISSION);
@@ -201,7 +216,7 @@ void WorldSession::HandleMessagechatOpcode( WorldPacket & recv_data )
 						pGuild->OfficerChannelChat(this, msg);
 					else
 					{
-						WorldPacket data2(SMSG_GUILD_COMMAND_RESULT, 100);
+						WorldPacket data2(SMSG_GUILD_COMMAND_RESULT, 8 + pGuild->GetGuildName().size() + 1);
 						data2 << uint32(GUILD_MEMBER_S);
 						data2 << pGuild->GetGuildName();
 						data2 << uint32(C_R_DONT_HAVE_PERMISSION);
@@ -335,18 +350,7 @@ void WorldSession::HandleMessagechatOpcode( WorldPacket & recv_data )
 			{
 				GetPlayer()->SetFlag(PLAYER_FLAGS, 0x02);
 				if(sWorld.GetKickAFKPlayerTime())
-					sEventMgr.AddEvent(GetPlayer(),&Player::SoftDisconnect,EVENT_PLAYER_SOFT_DISCONNECT,sWorld.GetKickAFKPlayerTime(),1);
-
-				// Kick me from my battleground now, since I'm useless.
-				uint32 battlegroundType = sBattlegroundMgr.GetBattleGroundTypeByMapId(GetPlayer()->GetMapId());
-				if(battlegroundType != 0)
-				{
-					Battleground *battleground = sBattlegroundMgr.GetBattlegroundByInstanceID(GetPlayer()->GetInstanceID(), battlegroundType);
-					if(battleground != NULL)
-					{
-						battleground->RemovePlayer(GetPlayer());
-					}
-				}
+					sEventMgr.AddEvent(GetPlayer(),&Player::SoftDisconnect,EVENT_PLAYER_SOFT_DISCONNECT,sWorld.GetKickAFKPlayerTime(),1,0);
 			}			
 		} break;
 	case CHAT_MSG_DND:
@@ -432,8 +436,7 @@ void WorldSession::HandleTextEmoteOpcode( WorldPacket & recv_data )
 		data.Initialize(SMSG_TEXT_EMOTE);
 		data << (uint64)GetPlayer()->GetGUID();
 		data << (uint32)text_emote;
-		if( namelen > 1 )   data << (uint32)0x00;
-		else				data << (uint32)0xFF; //When nothing/self selected, no name is displayed. (default text)
+		data << unk;
 		data << (uint32)namelen;
 		if( namelen > 1 )   data.append(name, namelen);
 		else				data << (uint8)0x00;
@@ -442,4 +445,26 @@ void WorldSession::HandleTextEmoteOpcode( WorldPacket & recv_data )
 	}
 }
 
+void WorldSession::HandleReportSpamOpcode(WorldPacket & recvPacket)
+{
+	CHECK_PACKET_SIZE(recvPacket, 29);
 
+    // the 0 in the out packet is unknown
+    GetPlayer()->GetSession()->OutPacket(SMSG_REPORT_SPAM_RESPONSE, 1, 0 );
+
+	/* This whole thing is guess-work */
+	uint8 unk1;
+	uint64 reportedGuid;
+	uint32 unk2;
+	uint32 messagetype;
+	uint32 unk3;
+	uint32 unk4;
+	std::string message;
+	recvPacket >> unk1 >> reportedGuid >> unk2 >> messagetype >> unk3 >> unk4 >> message;
+
+	Player * rPlayer = objmgr.GetPlayer(reportedGuid);
+	if(!rPlayer)
+		return;
+
+	sSocialMgr.AddIgnore(GetPlayer(), rPlayer->GetName());
+}

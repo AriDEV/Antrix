@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Script Engine
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * GameMonkey Script License
  * Copyright (c) 2003 Auran Development Ltd.
@@ -49,6 +54,9 @@ T * GetThisPointer(gmThread * a_thread)
 	int GM_CDECL Player_GetClass(gmThread * a_thread);
 	int GM_CDECL Player_GetRace(gmThread * a_thread);
 	int GM_CDECL Player_Teleport(gmThread * a_thread);
+	int GM_CDECL Unit_RemoveAura(gmThread * a_thread);
+    int GM_CDECL Player_HasQuest(gmThread * a_thread);
+    int GM_CDECL Player_HasItem(gmThread * a_thread);
 	int GM_CDECL Player_HasFinishedQuest(gmThread * a_thread);
 	int GM_CDECL Player_GetReputationRank(gmThread * a_thread);
 	int GM_CDECL Player_GetReputationValue(gmThread * a_thread);
@@ -62,6 +70,9 @@ T * GetThisPointer(gmThread * a_thread)
 	int GM_CDECL Player_SendSystemMessage(gmThread * a_thread);
 	int GM_CDECL Player_Knockback(gmThread * a_thread);
 	int GM_CDECL Player_JoinInstance(gmThread * a_thread);
+	int GM_CDECL Player_SetLevel(gmThread * a_thread);
+	int GM_CDECL Player_LevelUp(gmThread * a_thread);
+	int GM_CDECL Player_Kick(gmThread * a_thread);
 
 /* AreaTrigger Functions */
 	int GM_CDECL AreaTrigger_GetEntry(gmThread * a_thread);
@@ -78,11 +89,18 @@ T * GetThisPointer(gmThread * a_thread)
 	int GM_CDECL Unit_RegisterTimer(gmThread * a_thread);
 	int GM_CDECL Unit_DeregisterTimer(gmThread * a_thread);
 	int GM_CDECL Unit_SpawnMonster(gmThread * a_thread);
-	
+	int GM_CDECL Unit_SendYellMessage(gmThread * a_thread);
+	int GM_CDECL Unit_Spawngameobject(gmThread * a_thread);
 	int GM_CDECL Unit_GetGuid(gmThread * a_thread);
 	int GM_CDECL Unit_GetPlayer(gmThread * a_thread);
 	int GM_CDECL Unit_GetGameObject(gmThread * a_thread);
 	int GM_CDECL Unit_GetUnit(gmThread * a_thread);
+	int GM_CDECL Unit_GetName(gmThread * a_thread);
+	int GM_CDECL Unit_GetHealthPct(gmThread * a_thread);
+	int GM_CDECL Unit_GetClosestPlayer(gmThread * a_thread);
+	int GM_CDECL Unit_GetClosestUnit(gmThread * a_thread);
+	int GM_CDECL Unit_GetRandomPlayer(gmThread * a_thread);
+	int GM_CDECL Unit_InCombat(gmThread * a_thread);
 	
 	// Escort Quest System
 		int GM_CDECL Unit_SpawnWithoutWorld(gmThread * a_thread);
@@ -106,6 +124,14 @@ T * GetThisPointer(gmThread * a_thread)
 		int GM_CDECL Unit_ChangeModel(gmThread * a_thread);
 		int GM_CDECL Unit_ChangeFaction(gmThread * a_thread);
 		int GM_CDECL Unit_PlaySoundToSet(gmThread * a_thread);
+		int GM_CDECL Unit_GetClosestUnitByEntry(gmThread * a_thread);
+		int GM_CDECL Unit_GetPositionX(gmThread * a_thread);
+		int GM_CDECL Unit_GetPositionY(gmThread * a_thread);
+		int GM_CDECL Unit_GetPositionZ(gmThread * a_thread);
+		int GM_CDECL Unit_GetFacing(gmThread * a_thread);
+		int GM_CDECL Unit_AddToHated(gmThread * a_thread);
+		int GM_CDECL Unit_ReturnToSpawn(gmThread * a_thread);
+		int GM_CDECL Unit_AddThreat(gmThread * a_thread);
 
 /* GameObject Functions */
 	int GM_CDECL GameObject_Despawn(gmThread * a_thread);
@@ -114,8 +140,10 @@ T * GetThisPointer(gmThread * a_thread)
 
 /* Misc Helper Functions */
 	int GM_CDECL GM_RAND(gmThread * a_thread);
+	int GM_CDECL GM_SPRINTF(gmThread * a_thread);
 	int GM_CDECL GM_RegisterEvent(gmThread * a_thread);
 	int GM_CDECL GM_GetUnitBySqlId(gmThread * a_thread);
+	int GM_CDECL GM_GetDistance(gmThread * a_thread);
 
 /* Quest Functions */
 	int GM_CDECL Quest_GetID(gmThread * a_thread);

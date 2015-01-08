@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -67,7 +72,7 @@ struct emoteentry
 	uint32 unk11;
 };
 
-struct skilllinespell
+struct skilllinespell //SkillLineAbility.dbc
 {
 	uint32 Id;
 	uint32 skilline;
@@ -83,7 +88,7 @@ struct skilllinespell
 	uint32 green;
 	uint32 unk10;
 	uint32 unk11;
-	uint32 unk12;
+	uint32 reqTP;
 };
 
 struct EnchantEntry
@@ -125,7 +130,7 @@ struct GemPropertyEntry{
 	uint32 SocketMask;
 };
 
-struct skilllineentry
+struct skilllineentry //SkillLine.dbc
 {
 	uint32 id;
 	uint32 type;
@@ -180,7 +185,7 @@ struct SpellEntry
 	uint32 Attributes;					  //7
 	uint32 AttributesEx;					//8
 	uint32 Flags3;						  //9
-	uint32 field10;						 //10 // Flags to
+	uint32 Flags4;						 //10 // Flags to
 	uint32 field11;						 //11 // Flags....
 	uint32 unk201_1;						//12 // Flags 2.0.1 unknown one
 	uint32 RequiredShapeShift;			  //13 // Flags BitMask for shapeshift spells

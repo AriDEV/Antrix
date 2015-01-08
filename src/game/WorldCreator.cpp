@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -105,7 +110,7 @@ MapMgr* WorldCreator::GetInstance(uint32 mapid, Object* obj)
 			MapInfo *pMapInfo = WorldMapInfoStorage.LookupEntry(ia->MapId);
 			if(pMapInfo)
 			{
-				if((uint32)time(NULL) > (ia->Creation) + (pMapInfo ? pMapInfo->cooldown : 604800))
+				if((uint32)time(NULL) > (ia->Creation) + (pMapInfo->cooldown ? pMapInfo->cooldown : 604800))
 				{
 					sInstanceSavingManager.RemoveSavedInstance(ia->MapId,ia->InstanceId,true);
 					sInstanceSavingManager.RemoveSavedInstance(ia->InstanceId);
@@ -147,7 +152,7 @@ MapMgr* WorldCreator::GetInstance(uint32 mapid, uint32 instanceId)
 			MapInfo *pMapInfo = WorldMapInfoStorage.LookupEntry(ia->MapId);
 			if(pMapInfo)
 			{
-				if((uint32)time(NULL) > (ia->Creation) + (pMapInfo ? pMapInfo->cooldown : 604800))
+				if((uint32)time(NULL) > (ia->Creation) + (pMapInfo->cooldown ? pMapInfo->cooldown : 604800))
 				{
 					sInstanceSavingManager.RemoveSavedInstance(ia->MapId,ia->InstanceId,true);
 					sInstanceSavingManager.RemoveSavedInstance(ia->InstanceId);
@@ -187,7 +192,7 @@ MapMgr* WorldCreator::GetInstance(uint32 instanceId)
 			MapInfo *pMapInfo = WorldMapInfoStorage.LookupEntry(ia->MapId);
 			if(pMapInfo)
 			{
-				if((uint32)time(NULL) > (ia->Creation) + (pMapInfo ? pMapInfo->cooldown : 604800))
+				if((uint32)time(NULL) > (ia->Creation) + (pMapInfo->cooldown ? pMapInfo->cooldown : 604800))
 				{
 					sInstanceSavingManager.RemoveSavedInstance(ia->MapId,ia->InstanceId,true);
 					sInstanceSavingManager.RemoveSavedInstance(ia->InstanceId);
@@ -221,46 +226,6 @@ MapMgr* WorldCreator::GetInstance(uint32 instanceId)
 	}
 	return NULL;
 }
-
-void WorldCreator::CreateBattlegroundInstance(Battleground* m_Battleground)
-{
-	Map* instance_map = GetMap(m_Battleground->GetMapId());
-	// Create a new instance of this battleground.
-	ASSERT(instance_map);
-	
-	uint32 instanceId = GenerateInstanceID();
-	m_Battleground->SetInstanceID(instanceId);
-
-	MapMgr * mapMgr = instance_map->CreateMapMgrInstance(instanceId);
-	ASSERT(mapMgr);
-	mapMgr->m_battleground = m_Battleground;
-
-	m_Battleground->SetMapMgr(mapMgr);
-	m_Battleground->SetMap(instance_map);
-}
-
-void WorldCreator::DestroyBattlegroundInstance(Battleground* m_Battleground)
-{
-	Map* instance_map = GetMap(m_Battleground->GetMapId());
-	ASSERT(instance_map != NULL);
-
-	// this kills mapmgr
-	instance_map->DestroyMapMgrInstance(m_Battleground->GetInstanceID());
-
-	// null out remaining ptr's
-	m_Battleground->SetMapMgr(NULL);
-	m_Battleground->SetInstanceID(0);
-}
-
-void WorldCreator::DestroyBattlegroundInstance(uint32 mapid, uint32 instanceid)
-{
-	Map* instance_map = GetMap(mapid);
-	ASSERT(instance_map != NULL);
-
-	// this kills mapmgr
-	instance_map->DestroyMapMgrInstance(instanceid);
-}
-
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // Instance Manager
@@ -428,6 +393,20 @@ uint32 WorldCreator::CreateInstance(Group *pGroup, Player *pPlayer, uint32 mapid
 	return pInstance->GetInstanceID();
 }
 
+uint32 WorldCreator::CreateInstance(uint32 mapid, uint32 instanceid, MapMgr ** destptr)
+{
+	Map* instance_map = GetMap(mapid);
+	ASSERT(instance_map != NULL);
+
+	MapMgr * pInstance = instance_map->CreateMapMgrInstance(instanceid);
+	ASSERT(pInstance);
+	if(destptr)
+		*destptr = pInstance;
+
+	return pInstance->GetInstanceID();
+}
+
+
 MapMgr *WorldCreator::GetInstanceByGroup(Group *pGroup, Player *pPlayer, MapInfo *pMapInfo)
 {
 	MapMgr * mgr = GetMap(pMapInfo->mapid)->GetInstanceByGroup(pGroup, pPlayer);
@@ -452,7 +431,7 @@ MapMgr *WorldCreator::GetInstanceByGroup(Group *pGroup, Player *pPlayer, MapInfo
 					MapInfo *pMapInfo = WorldMapInfoStorage.LookupEntry(ia->MapId);
 					if(pMapInfo)
 					{
-						if((uint32)time(NULL) > (ia->Creation) + (pMapInfo ? pMapInfo->cooldown : 604800))
+						if((uint32)time(NULL) > (ia->Creation) + (pMapInfo->cooldown ? pMapInfo->cooldown : 604800))
 						{
 							sInstanceSavingManager.RemoveSavedInstance(ia->MapId,ia->InstanceId,true);
 							sInstanceSavingManager.RemoveSavedInstance(ia->InstanceId);
@@ -505,7 +484,7 @@ MapMgr *WorldCreator::GetInstanceByCreator(Player *pCreator, MapInfo *pMapInfo)
 					MapInfo *pMapInfo = WorldMapInfoStorage.LookupEntry(ia->MapId);
 					if(pMapInfo)
 					{
-						if((uint32)time(NULL) > (ia->Creation) + (pMapInfo ? pMapInfo->cooldown : 604800))
+						if((uint32)time(NULL) > (ia->Creation) + (pMapInfo->cooldown ? pMapInfo->cooldown : 604800))
 						{
 							sInstanceSavingManager.RemoveSavedInstance(ia->MapId,ia->InstanceId,true);
 							sInstanceSavingManager.RemoveSavedInstance(ia->InstanceId);
@@ -581,7 +560,8 @@ void WorldCreator::InstanceHardReset(MapMgr *mMapMgr)
 	sInstanceSavingManager.RemoveSavedInstance(mapid, instanceid, true);
 }
 
-MapMgr * WorldCreator::GetInstanceByGroupInstanceId(uint32 InstanceID, uint32 mapid, bool Lock)
+// Only usable by Instance save manager when removing players from the manager.
+MapMgr * WorldCreator::ISMGetInstanceBeforeRemoval(uint32 InstanceID, uint32 mapid, bool Lock)
 {
 	if(InstanceID > 2)
 	{
@@ -592,9 +572,8 @@ MapMgr * WorldCreator::GetInstanceByGroupInstanceId(uint32 InstanceID, uint32 ma
 			MapInfo *pMapInfo = WorldMapInfoStorage.LookupEntry(ia->MapId);
 			if(pMapInfo)
 			{
-				if((uint32)time(NULL) > (ia->Creation) + (pMapInfo ? pMapInfo->cooldown : 604800))
+				if((uint32)time(NULL) > (ia->Creation) + (pMapInfo->cooldown ? pMapInfo->cooldown : 604800))
 				{
-					sInstanceSavingManager.RemoveSavedInstance(ia->MapId,ia->InstanceId,true);
 					sInstanceSavingManager.RemoveSavedInstance(ia->InstanceId);
 				}
 				else

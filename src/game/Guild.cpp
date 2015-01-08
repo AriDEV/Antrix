@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Guild System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -561,4 +566,20 @@ void Guild::LoadGuildCreationDate()
 	m_createdYear = fields[0].GetUInt32();
 
 	delete result3;
+}
+
+void Guild::RenameGuild(std::string guildName)
+{
+	SetGuildName(guildName);
+	CharacterDatabase.Execute("UPDATE guilds SET guildName = '%s' WHERE guildId = %u", CharacterDatabase.EscapeString(guildName), GetGuildId());
+	uint32 ttime = time(NULL);
+
+	std::list<PlayerInfo*>::iterator itr = m_guildMembers.begin();
+	for (; itr != m_guildMembers.end(); itr++)
+	{
+		Player * pMember = objmgr.GetPlayer((*itr)->guid);
+		if(!pMember) continue;
+
+		pMember->SetUInt32Value(PLAYER_GUILD_TIMESTAMP, ttime);
+	}
 }

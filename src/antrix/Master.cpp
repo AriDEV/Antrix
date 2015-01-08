@@ -1,23 +1,35 @@
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
 #include "Master.h"
 #include "CConsole.h"
 #include "../shared/CrashHandler.h"
 #include "../game/StdAfx.h"
-#include "../shared/antrix_getopt.h"
+#include "../shared/ascent_getopt.h"
 
-#ifdef WIN32
-#define PLATFORM_TEXT "Win32"
-#define BANNER "Antrix/Win32-2.1.2-%u :: World Server                        www.emupedia.com"
+#ifdef HOARD
+#define BANNER "Ascent r%u/%s-%s-%s-Hoard :: World Server"
 #else
-#if UNIX_FLAVOUR == UNIX_FLAVOUR_LINUX
-#define PLATFORM_TEXT "Linux"
-#define BANNER "Antrix/Linux-2.1.2-%u :: World Server                        www.emupedia.com"
-#elif UNIX_FLAVOUR == UNIX_FLAVOUR_BSD
-#define PLATFORM_TEXT "FreeBSD"
-#define BANNER "Antrix/FreeBSD-2.1.2-%u :: World Server                      www.emupedia.com"
-#else
-#define PLATFORM_TEXT "Unix"
-#define BANNER "Antrix/Unix-2.1.2-%u :: World Server                         www.emupedia.com"
+#define BANNER "Ascent r%u/%s-%s-%s :: World Server"
 #endif
+
+#ifndef WIN32
 #include <sched.h>
 #endif
 
@@ -40,9 +52,9 @@ SERVER_DECL Database* Database_Character;
 SERVER_DECL Database* Database_World;
 
 // mainserv defines
-TextLogger * Crash_Log;
 SessionLogWriter * GMCommand_Log;
 SessionLogWriter * Anticheat_Log;
+SessionLogWriter * Player_Log;
 
 void Master::_OnSignal(int s)
 {
@@ -89,45 +101,80 @@ struct Addr
 
 #define DEF_VALUE_NOT_SET 0xDEADBEEF
 
+#ifdef WIN32
+        static const char * default_config_file = "ascent.conf";
+        static const char * default_realm_config_file = "realms.conf";
+#else
+        static const char * default_config_file = CONFDIR "/ascent.conf";
+        static const char * default_realm_config_file = CONFDIR "/realms.conf";
+#endif
+
+const char banner[] = ""
+"                                   I33ctueuJ7     \n"
+"                                   ICLL5seOue37   \n"
+"                                    7zLeYuvYee27  \n"
+"                                     7uOCaYaaYs7  \n"
+"                               71v22C5s0nC5JJJSJ  \n"
+"                               7z2zvvCtolljjljC57 \n"
+"                                lzesCIoooonCoaCe7 \n"
+"                                 7Oz3JlooI8xtgu57 \n"
+"                                 tOj3sloootvlolu3 \n"
+"                                 55jjuejlollojI357\n"
+"                             7ves5tlojeYejjllsa4Yr\n"
+"  12n2n5eOLnnnnnnCuunuunnn5enCC5Clloooj3LuCoI304sr\n"
+"  i2uCotzueolljljjljjllllloojjljjooooltzoJfhaa09Yr\n"
+"    7esjljjlllllllllllllllllooooooooovCn3JunYhTal7\n"
+"    Jevlooooooooooooooooooooooooooolo3oljz5ir777  \n"
+"   cuvloooooooooooooooooooooooooooot2JlolC3       \n"
+"  7nCjooooooooooooooooooooooooooool3JlojCn7       \n"
+"  7LJlooooooooooooooooooooooooooooollljzu7        \n"
+"  7LvloooooooololoooooooooooooooooojoJee1         \n"
+"  7OCjoooooool3o2tooooooooolloooolozT0C7           \"We love our goats\"\n"
+"   JLlooooolvnlJ5jlllljjjjjtvoooltes0r            \n"
+"   7eejoooolv3OatllotvJ222CY8loojuCzL7            \n"
+"    7L3loolt2sULunnCuCCzJtIeLjoolzOInv            \n"
+"   7JYolol3Otun7          7unIlllJOrzC            \n"
+"   7JLzlll3OoIuu7          rsuJtv3a6h3            \n"
+"     7n5ool3OC1CC7         7spXk9pFhei            \n"
+"      7LOicilSxxO7          7oneoeJ7              \n"
+"       1OUU9fPfYj7                                \n"
+"       7vVGf277 \n"
+"\n";
+
 bool Master::Run(int argc, char ** argv)
 {
-#ifdef WIN32
-	char * config_file = "antrix.conf";
-	char * realm_config_file = "realms.conf";
-#else
-	char * config_file = CONFDIR "/antrix.conf";
-	char * realm_config_file = CONFDIR "/realms.conf";
-#endif
+	char * config_file = (char*)default_config_file;
+	char * realm_config_file = (char*)default_realm_config_file;
 
 	int file_log_level = DEF_VALUE_NOT_SET;
 	int screen_log_level = DEF_VALUE_NOT_SET;
 	int do_check_conf = 0;
 	int do_version = 0;
 
-	struct antrix_option longopts[] =
+	struct ascent_option longopts[] =
 	{
-		{ "checkconf",			antrix_no_argument,				&do_check_conf,			1		},
-		{ "screenloglevel",		antrix_required_argument,		&screen_log_level,		1		},
-		{ "fileloglevel",		antrix_required_argument,		&file_log_level,		1		},
-		{ "version",			antrix_no_argument,				&do_version,			1		},
-		{ "conf",				antrix_required_argument,		NULL,					'c'		},
-		{ "realmconf",			antrix_required_argument,		NULL,					'r'		},
+		{ "checkconf",			ascent_no_argument,				&do_check_conf,			1		},
+		{ "screenloglevel",		ascent_required_argument,		&screen_log_level,		1		},
+		{ "fileloglevel",		ascent_required_argument,		&file_log_level,		1		},
+		{ "version",			ascent_no_argument,				&do_version,			1		},
+		{ "conf",				ascent_required_argument,		NULL,					'c'		},
+		{ "realmconf",			ascent_required_argument,		NULL,					'r'		},
 		{ 0, 0, 0, 0 }
 	};
 
 	char c;
-	while ((c = antrix_getopt_long_only(argc, argv, ":f:", longopts, NULL)) != -1)
+	while ((c = ascent_getopt_long_only(argc, argv, ":f:", longopts, NULL)) != -1)
 	{
 		switch (c)
 		{
 		case 'c':
-			config_file = new char[strlen(antrix_optarg)];
-			strcpy(config_file, antrix_optarg);
+			config_file = new char[strlen(ascent_optarg)];
+			strcpy(config_file, ascent_optarg);
 			break;
 
 		case 'r':
-			realm_config_file = new char[strlen(antrix_optarg)];
-			strcpy(realm_config_file, antrix_optarg);
+			realm_config_file = new char[strlen(ascent_optarg)];
+			strcpy(realm_config_file, ascent_optarg);
 			break;
 
 		case 0:
@@ -141,9 +188,9 @@ bool Master::Run(int argc, char ** argv)
 	}
 
 	// Startup banner
+	UNIXTIME = time(NULL);
 	if(!do_version && !do_check_conf)
 	{
-		launch_thread(new TextLoggerThread);
 		sLog.Init(-1, 3);
 	}
 	else
@@ -152,85 +199,73 @@ bool Master::Run(int argc, char ** argv)
 		sLog.m_screenLogLevel = 3;
 	}
 
-	sLog.outString("==============================================================================");
-	sLog.outString(BANNER, g_getRevision());
-	sLog.outString("");
-	sLog.outString("Copyright (c) 2007 Antrix Team. This software is under the QPL license, for");
-	sLog.outString("more information look under the COPYING file in this distribution.");
-	sLog.outString("==============================================================================");
-	sLog.outString("");
+	puts(banner);
+	printf(BANNER, g_getRevision(), CONFIG, PLATFORM_TEXT, ARCH);
+	printf("\nCopyright (C) 2005-2007 Ascent Team. http://www.ascentemu.com/\n");
+	printf("This program comes with ABSOLUTELY NO WARRANTY, and is FREE SOFTWARE.\n");
+	printf("You are welcome to redistribute it under the terms of the GNU General\n");
+	printf("Public License, either version 3 or any later version. For a copy of\n");
+	printf("this license, see the COPYING file provided with this distribution.\n");
+	Log.Line();
+
 	if(do_version)
 		return true;
 
 	if(do_check_conf)
 	{
-		printf("Checking config file: %s\n", config_file);
+		Log.Notice("Config", "Checking config file: %s", config_file);
 		if(Config.MainConfig.SetSource(config_file, true))
-			printf("  Passed without errors.\n");
+			Log.Success("Config", "Passed without errors.");
 		else
-			printf("  Encountered one or more errors.\n");
+			Log.Warning("Config", "Encountered one or more errors.");
 
-		printf("\nChecking config file: %s\n", realm_config_file);
+		Log.Notice("Config", "Checking config file: %s\n", realm_config_file);
 		if(Config.RealmConfig.SetSource(realm_config_file, true))
-			printf("  Passed without errors.\n");
+			Log.Success("Config", "Passed without errors.\n");
 		else
-			printf("  Encountered one or more errors.\n");
+			Log.Warning("Config", "Encountered one or more errors.\n");
 
 		/* test for die variables */
 		string die;
 		if(Config.MainConfig.GetString("die", "msg", &die) || Config.MainConfig.GetString("die2", "msg", &die))
-			printf("Die directive received: %s", die.c_str());
+			Log.Warning("Config", "Die directive received: %s", die.c_str());
 
 		return true;
 	}
 
-	sLog.outString("The key combination <Ctrl-C> will safely shut down the server at any time.");
-	sLog.outString("");
-	sLog.outString("Initializing File Loggers...");
-	Crash_Log = new TextLogger(FormatOutputString("logs", "CrashLog", true).c_str(), false);
+	printf("The key combination <Ctrl-C> will safely shut down the server at any time.\n");
+	Log.Line();
     
-	sLog.outString("Initializing Random Number Generators...");
 	uint32 seed = time(NULL);
 	new MTRand(seed);
 	srand(seed);
+	Log.Success("MTRand", "Initialized Random Number Generators.");
 
-	sLog.outString("Starting Thread Manager...\n");
 	new ThreadMgr;
+	Log.Success("ThreadMgr", "Started.");
 	uint32 LoadingTime = getMSTime();
 
-	sLog.outColor(TNORMAL, "Loading Config Files...\n");
-	sLog.outColor(TYELLOW, "  >> %s :: ", config_file);
+	Log.Notice("Config", "Loading Config Files...\n");
 	if(Config.MainConfig.SetSource(config_file))
-	{
-		sLog.outColor(TGREEN, "ok!");
-		sLog.outColor(TNORMAL, "\n");
-	}
+		Log.Success("Config", ">> ascent.conf");
 	else
 	{
-		sLog.outColor(TRED, "fail.");
-		sLog.outColor(TNORMAL, "\n");
+		Log.Error("Config", ">> ascent.conf");
 		return false;
 	}
 
-	/* test for die variables */
 	string die;
 	if(Config.MainConfig.GetString("die", "msg", &die) || Config.MainConfig.GetString("die2", "msg", &die))
 	{
-		printf("Die directive received: %s", die.c_str());
+		Log.Warning("Config", "Die directive received: %s", die.c_str());
 		return false;
 	}	
 
-
-	sLog.outColor(TYELLOW, "  >> %s :: ", realm_config_file);
 	if(Config.RealmConfig.SetSource(realm_config_file))
-	{
-		sLog.outColor(TGREEN, "ok!");
-		sLog.outColor(TNORMAL, "\n\n");
-	}
+		Log.Success("Config", ">> realms.conf");
 	else
 	{
-		sLog.outColor(TRED, "fail.");
-		sLog.outColor(TNORMAL, "\n\n");
+		Log.Error("Config", ">> realms.conf");
 		return false;
 	}
 
@@ -239,6 +274,37 @@ bool Master::Run(int argc, char ** argv)
 		return false;
 	}
 
+	/*Log.Color(TWHITE);
+	int left = 3;
+	bool dodb = false;
+	printf("\nHit F1 within the next 3 seconds to enter database maintenance mode.");
+	fflush(stdout);
+	while(left)
+	{
+        dodb = sConsole.PollForD();
+		if(dodb) break;
+		left--;
+		printf(".");
+		fflush(stdout);
+	}
+
+	if(dodb)
+	{
+		Log.Color(TNORMAL);
+		printf("\nEntering database maintenance mode.\n\n");
+		new DatabaseCleaner;
+		DatabaseCleaner::getSingleton().Run();
+		delete DatabaseCleaner::getSingletonPtr();
+		Log.Color(TYELLOW);
+		printf("\nMaintenence finished. Take a moment to review the output, and hit space to continue startup.");
+		Log.Color(TNORMAL);
+		fflush(stdout);
+		sConsole.WaitForSpace();
+	}
+	else
+		Log.Color(TNORMAL);*/
+
+	Log.Line();
 	sLog.outString("");
 
 	ScriptSystem = new ScriptEngine;
@@ -250,6 +316,7 @@ bool Master::Run(int argc, char ** argv)
 	// open cheat log file
 	Anticheat_Log = new SessionLogWriter(FormatOutputString("logs", "cheaters", false).c_str(), false);
 	GMCommand_Log = new SessionLogWriter(FormatOutputString("logs", "gmcommand", false).c_str(), false);
+	Player_Log = new SessionLogWriter(FormatOutputString("logs", "players", false).c_str(), false);
 
 	/* load the config file */
 	sWorld.Rehash(false);
@@ -304,7 +371,7 @@ bool Master::Run(int argc, char ** argv)
 	sLog.outString ("\nServer is ready for connections. Startup time: %ums\n", LoadingTime );
  
 	/* write pid file */
-	FILE * fPid = fopen("antrix.pid", "w");
+	FILE * fPid = fopen("ascent.pid", "w");
 	if(fPid)
 	{
 		uint32 pid;
@@ -331,6 +398,9 @@ bool Master::Run(int argc, char ** argv)
 	while(!m_stopEvent)
 #endif
 	{
+		/* Update global UnixTime variable */
+		UNIXTIME = time(NULL);
+
 		start = now();
 		diff = start - last_time;
 
@@ -397,11 +467,8 @@ bool Master::Run(int argc, char ** argv)
 	}
 	_UnhookSignals();
 
-	CConsoleThread *thread = (CConsoleThread*)sThreadMgr.GetThreadByType(THREADTYPE_CONSOLEINTERFACE);
-	ASSERT(thread);
-	thread->SetThreadState(THREADSTATE_TERMINATE);
-	// have to cleanup manually.
-	sThreadMgr.RemoveThread(thread);
+	/* Shut down console system */
+	sCConsole.Kill();
 
 	sLog.outString("Killing all sockets and network subsystem.");
 #ifndef CLUSTERING
@@ -444,6 +511,8 @@ bool Master::Run(int argc, char ** argv)
 	sWorld.ShutdownClasses();
 	sLog.outString("\nDeleting World...");
 	delete World::getSingletonPtr();
+	sScriptMgr.UnloadScripts();
+	delete ScriptMgr::getSingletonPtr();
 
 	sLog.outString("Deleting Event Manager...");
 	delete EventMgr::getSingletonPtr();
@@ -458,10 +527,14 @@ bool Master::Run(int argc, char ** argv)
 	sLog.outString("Deleting Script Engine...");
 	delete ScriptSystem;
 
-	sLog.outString("\nServer shutdown completed successfully.\n");
+	delete GMCommand_Log;
+	delete Anticheat_Log;
+	delete Player_Log;
 
-	// close the logs
-	TextLogger::Thread->Die();
+	// remove pid
+	remove("ascent.pid");
+
+	sLog.outString("\nServer shutdown completed successfully.\n");
 
 #ifdef WIN32
 	WSACleanup();
@@ -593,16 +666,29 @@ void OnCrash(bool Terminate)
 				dbThread = (MySQLDatabase*)Database_Character;
 				dbThread->SetThreadState(THREADSTATE_TERMINATE);
 				dbThread2->SetThreadState(THREADSTATE_TERMINATE);
-				CharacterDatabase.Execute("UPDATE characters SET online = 0");
-				WorldDatabase.Execute("UPDATE characters SET online = 0");
+				const char * query = "UPDATE characters SET online = 0 WHERE guid = 0";
+				uint32 next_query_time = getMSTime() + 10000;
 				// wait for it to finish its work
+				CharacterDatabase.Execute(query);
+				WorldDatabase.Execute(query);
+
 				while(dbThread->ThreadRunning || dbThread2->ThreadRunning)
 				{
+					if(getMSTime() >= next_query_time)
+					{
+						next_query_time = getMSTime() + 10000;
+						/* send some bullshit queries */
+                        if(dbThread->ThreadRunning)
+							CharacterDatabase.Execute(query);
+						
+						if(dbThread2->ThreadRunning)
+							WorldDatabase.Execute(query);
+					}
 					Sleep(100);
 				}
 			}
 			sLog.outString("All pending database operations cleared.\n");
-			sWorld.SaveAllPlayers();
+			//sWorld.SaveAllPlayers();
 			sLog.outString("Data saved.");
 		}
 	}

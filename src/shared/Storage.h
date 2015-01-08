@@ -1,10 +1,33 @@
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
 #ifndef STORAGE_H_
 #define STORAGE_H_
+
+#ifdef WIN32
+#pragma warning(disable:4312)
+#endif
 
 /** Base iterator class, returned by MakeIterator() functions.
  */
 template<class T>
-class StorageContainerIterator
+class SERVER_DECL StorageContainerIterator
 {
 protected:
 	/** Currently referenced object
@@ -35,7 +58,7 @@ public:
 };
 
 template<class T>
-class ArrayStorageContainer
+class SERVER_DECL ArrayStorageContainer
 {
 public:
 	/** This is where the magic happens :P
@@ -96,7 +119,7 @@ public:
 	 */
 	T * AllocateEntry(uint32 Entry)
 	{
-		if(Entry > _max || _array[Entry] != 0)
+		if(Entry >= _max || _array[Entry] != 0)
 			return reinterpret_cast<T*>(0);
 
 		_array[Entry] = new T;
@@ -107,7 +130,7 @@ public:
 	 */
 	bool DeallocateEntry(uint32 Entry)
 	{
-		if(Entry > _max || _array[Entry] == 0)
+		if(Entry >= _max || _array[Entry] == 0)
 			return false;
 
 		delete _array[Entry];
@@ -119,7 +142,7 @@ public:
 	 */
 	T * LookupEntry(uint32 Entry)
 	{
-		if(Entry > _max)
+		if(Entry >= _max)
 			return reinterpret_cast<T*>(0);
 		else
 			return _array[Entry];
@@ -166,7 +189,7 @@ public:
 };
 
 template<class T>
-class HashMapStorageContainer
+class SERVER_DECL HashMapStorageContainer
 {
 public:
 	typename HM_NAMESPACE::hash_map<uint32, T*> _map;
@@ -275,7 +298,7 @@ public:
 };
 
 template<class T>
-class ArrayStorageIterator : public StorageContainerIterator<T>
+class SERVER_DECL ArrayStorageIterator : public StorageContainerIterator<T>
 {
 	ArrayStorageContainer<T> * Source;
 	uint32 MyIndex;
@@ -326,7 +349,7 @@ public:
 };
 
 template<class T>
-class HashMapStorageIterator : public StorageContainerIterator<T>
+class SERVER_DECL HashMapStorageIterator : public StorageContainerIterator<T>
 {
 	HashMapStorageContainer<T> * Source;
 	typename HM_NAMESPACE::hash_map<uint32, T*>::iterator itr;
@@ -373,6 +396,7 @@ public:
 	}
 };
 
+#ifndef SCRIPTLIB
 template<class T>
 StorageContainerIterator<T> * ArrayStorageContainer<T>::MakeIterator()
 {
@@ -384,9 +408,10 @@ StorageContainerIterator<T> * HashMapStorageContainer<T>::MakeIterator()
 {
 	return new HashMapStorageIterator<T>(this);
 }
+#endif
 
 template<class T, class StorageType>
-class Storage
+class SERVER_DECL Storage
 {
 protected:
 	StorageType _storage;
@@ -481,7 +506,7 @@ public:
 };
 
 template<class T, class StorageType>
-class SQLStorage : public Storage<T, StorageType>
+class SERVER_DECL SQLStorage : public Storage<T, StorageType>
 {
 public:
 	SQLStorage() : Storage<T, StorageType>() {}
@@ -560,6 +585,8 @@ public:
 
 		size_t cols = strlen(FormatString);
 		result = WorldDatabase.Query("SELECT * FROM %s", IndexName);
+		if (!result)
+			return;
 		Field * fields = result->Fetch();
 
 		if(result->GetFieldCount() != cols)
@@ -587,9 +614,10 @@ public:
 
 			LoadBlock(fields, Allocated);
 		} while(result->NextRow());
+		Log.Notice("Storage", "%u entries loaded from table %s.", result->GetRowCount(), IndexName);
 		delete result;
 
-		Log.Success("Storage", "Loaded database cache from `%s`.", IndexName);
+		//Log.Success("Storage", "Loaded database cache from `%s`.", IndexName);
 	}
 
 	/** Reloads the storage container
@@ -610,6 +638,8 @@ public:
 
 		size_t cols = strlen(Storage<T, StorageType>::_formatString);
 		result = WorldDatabase.Query("SELECT * FROM %s", Storage<T, StorageType>::_indexName);
+		if (!result)
+			return;
 		Field * fields = result->Fetch();
 
 		if(result->GetFieldCount() != cols)

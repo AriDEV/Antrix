@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Friends System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -278,7 +283,7 @@ void SocialMgr::DelFriend(Player* plr, uint64 friendguid)
 	if(!plr)
 		return;
 
-	WorldPacket data;
+	WorldPacket data(9);
 	uint64 plrguid = plr->GetGUID();
 
 	sLog.outDebug("SocialMgr: %s is deleting friendguid %d from his friendlist", plr->GetName(), friendguid);
@@ -304,7 +309,7 @@ void SocialMgr::DelIgnore(Player* plr, uint64 ignoreguid)
 	if(!plr)
 		return;
 
-	WorldPacket data;
+	WorldPacket data(9);
 	uint64 plrguid = plr->GetGUID();
 
 	sLog.outDebug("SocialMgr: %s is deleting guid %d from his ignorelist", plr->GetName(), ignoreguid);
@@ -524,7 +529,6 @@ void SocialMgr::RemovePlayer(Player* plr)
 
 void SocialMgr::LoadFromDB()
 {
-	sLog.outString("  Loading Friends Lists...");
 	std::map<uint64, std::set<uint64>*>::iterator Itr;
 	uint64 plrguid = 0;
 	uint64 friendguid = 0;

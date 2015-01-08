@@ -1,20 +1,25 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "dbcfile.h"
 #include <stdio.h>
-
+#include "../Common.h"
 DBCFile::DBCFile()
 {
 	
@@ -32,10 +37,25 @@ bool DBCFile::open(const char*fn)
 	fread(&fieldCount,4,1,pf); // Number of fields
 	fread(&recordSize,4,1,pf); // Size of a record
 	fread(&stringSize,4,1,pf); // String size
+
+#ifdef USING_BIG_ENDIAN
+	recordCount = swap32(recordCount);
+	fieldCount = swap32(fieldCount);
+	recordSize = swap32(recordSize);
+	stringSize = swap32(stringSize);
+#endif
 	
 	data = new unsigned char[recordSize*recordCount+stringSize];
 	stringTable = data + recordSize*recordCount;
 	fread(data,recordSize*recordCount+stringSize,1,pf);
+
+	/* swap all the rows */
+#ifdef USING_BIG_ENDIAN
+	/* burlex: this is a real hack. it'll mess up floats. i'm gonna rewrite the dbc interface soon :P */
+	uint32 * tbl = (uint32*)data;
+	for(int i = 0; i < (fieldCount * recordCount); ++i)
+		tbl[i] = swap32((uint32)tbl[i]);
+#endif
 	fclose(pf);
 	return true;
 }

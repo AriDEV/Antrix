@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Battleground Handling
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -17,200 +22,140 @@
 void WorldSession::HandleBattlefieldPortOpcode(WorldPacket &recv_data)
 {
 	if(!_player->IsInWorld()) return;
-	CHECK_PACKET_SIZE(recv_data, 5);
-	sLog.outString("BATTLEGROUND: Recieved CMSG_BATTLEFIELD_PORT packet.");
 
-	uint16 mapinfo;
-	uint8 action;
-	uint16 unk;
-	uint32 Battlegroundtype;
-	
-	recv_data >> unk >> Battlegroundtype >> mapinfo >> action;
-	
-	if(action == 0)
-	{
-		// Leave queue
-	}
-	else
-	{
-		// if we are already in a BG
-		Battleground *lastbg = sBattlegroundMgr.GetBattleground(GetPlayer()->m_bgLastBattlegroundID);
-		if(lastbg)
-			lastbg->RemovePlayer(GetPlayer(), false, false, false);
-			
-		// Enter battleground!
-		Battleground *bg = sBattlegroundMgr.GetBattleground(GetPlayer()->m_bgBattlegroundID);
-		if(!bg)
-			sLog.outError("BATTLEGROUND: Warning! Could not find battleground instance %d", GetPlayer()->m_bgBattlegroundID);
-		else
-			bg->AddPlayer(GetPlayer(), true, true);
-	}
+	/* Usually the fields in the packet would've been used to check what instance we're porting into, however since we're not
+	 * doing "queue multiple battleground types at once" we can just use our cached pointer in the player class. - Burlex
+	 */
+
+	if(_player->m_pendingBattleground)
+		_player->m_pendingBattleground->PortPlayer(_player);
 }
 
 void WorldSession::HandleBattlefieldStatusOpcode(WorldPacket &recv_data)
 {
-	//sLog.outDebug("BATTLEGROUND: Recieved CMSG_BATTLEFIELD_STATUS packet.");
-	
-	if(!GetPlayer()->m_bgInBattleground || GetPlayer()->GetCurrentBattleground() == NULL)
-	{
-		WorldPacket pkt;
-		pkt.Initialize(SMSG_BATTLEFIELD_STATUS);
-		pkt << uint32(0x00) << uint32(0x00);
-		SendPacket(&pkt);
-		return;
-	}
-
-	WorldPacket * pkt;
-	Battleground * bg = GetPlayer()->GetCurrentBattleground();
-	uint32 CurrentTime = uint32(time(NULL));
-	pkt = sBattlegroundMgr.BuildBattlegroundStatusPacket(0, bg->GetBattlegroundType(), bg->GetInstanceID(), 3, CurrentTime, 0);
-	SendPacket(pkt);
-	delete pkt;
+	/* This is done based on whether we are queued, inside, or not in a battleground.
+	 */
+	if(_player->m_pendingBattleground)		// Ready to port
+		BattlegroundManager.SendBattlefieldStatus(_player, 2, _player->m_pendingBattleground->GetType(), _player->m_pendingBattleground->GetId(), 120000, 0);
+	else if(_player->m_bg)					// Inside a bg
+		BattlegroundManager.SendBattlefieldStatus(_player, 3, _player->m_bg->GetType(), _player->m_bg->GetId(), World::UNIXTIME - _player->m_bg->GetStartTime(), _player->GetMapId());
+	else									// None
+		BattlegroundManager.SendBattlefieldStatus(_player, 0, 0, 0, 0, 0);	
 }
 
 void WorldSession::HandleBattlefieldListOpcode(WorldPacket &recv_data)
 {
 	// TODO implement this
-	sLog.outString("Recieved CMSG_BATTLEFIELD_LIST");
+	sLog.outString("Received CMSG_BATTLEFIELD_LIST");
 }
 
 void WorldSession::SendBattlegroundList(Creature* pCreature, uint32 mapid)
 {
 	if(!pCreature)
 		return;
-	
-	WorldPacket * pkt = sBattlegroundMgr.BuildBattlegroundListPacket(pCreature->GetGUID(), _player, mapid);
-	SendPacket(pkt);
-	delete pkt;
+
+	/* we should have a bg id selection here. */
+	uint32 t = BATTLEGROUND_WARSUNG_GULCH;
+	if(pCreature->GetCreatureName())
+	{
+		if(strstr(pCreature->GetCreatureName()->SubName, "Arena") != NULL)
+			t = BATTLEGROUND_ARENA_2V2;
+		else if(strstr(pCreature->GetCreatureName()->SubName, "Warsong") != NULL)
+			t = BATTLEGROUND_WARSUNG_GULCH;
+	}
+
+    BattlegroundManager.HandleBattlegroundListPacket(this, t);
 }
 
 void WorldSession::HandleBattleMasterHelloOpcode(WorldPacket &recv_data)
 {
-	sLog.outString("Recieved CMSG_BATTLEMASTER_HELLO");
+	sLog.outString("Received CMSG_BATTLEMASTER_HELLO");
 }
 
 void WorldSession::HandleLeaveBattlefieldOpcode(WorldPacket &recv_data)
 {
-	sLog.outString("Recieved CMSG_LEAVEBATTLEFIELD");
-	Battleground *bg = GetPlayer()->GetCurrentBattleground();
-	if(!bg)
-		return;
-	bg->RemovePlayer(GetPlayer(),true,true,!bg->m_GameStatus);
+	if(_player->m_bg && _player->IsInWorld())
+		_player->m_bg->RemovePlayer(_player, false);
 }
 
 void WorldSession::HandleAreaSpiritHealerQueryOpcode(WorldPacket &recv_data)
 {
-	if(!_player->IsInWorld()) return;
-	CHECK_PACKET_SIZE(recv_data, 8);
-	if(!GetPlayer()->m_bgInBattleground) return;
-	Battleground *bg = GetPlayer()->GetCurrentBattleground();
-	if(!bg)
-		return;
-	
-	sLog.outString("Recieved CMSG_AREA_SPIRITHEALER_QUERY");
+	if(!_player->IsInWorld() || !_player->m_bg) return;
 	uint64 guid;
-	uint32 rtime;
 	recv_data >> guid;
+	
+	uint32 restime = (_player->m_bg->GetLastResurrect() + 30) - World::UNIXTIME;
 	WorldPacket data(SMSG_AREA_SPIRIT_HEALER_TIME, 12);
-	uint32 NextRes = bg->m_LastResurrect + 30;	// 30 secs between
-	uint32 ResTime = NextRes - (uint32(time(NULL)));
-	ResTime *= 1000;	// 1000 ms per sec
-	rtime = ResTime;
-	data << guid << rtime;
+	data << guid << restime;
 	SendPacket(&data);
 }
 
 void WorldSession::HandleAreaSpiritHealerQueueOpcode(WorldPacket &recv_data)
 {
-	if(!_player->IsInWorld()) return;
-	CHECK_PACKET_SIZE(recv_data, 8);
-	sLog.outString("Recieved CMSG_AREA_SPIRITHEALER_QUEUE");
+	if(!_player->IsInWorld() || !_player->m_bg) return;
 	uint64 guid;
 	recv_data >> guid;
-	sLog.outDetail("Guid: "I64FMT"", guid);
-	Battleground *bg = GetPlayer()->GetCurrentBattleground();
-	if(bg)
-		bg->m_ReviveQueue[guid] = _player->GetGUID();
+	_player->m_bg->QueuePlayerForResurrect(_player);
 }
 
 void WorldSession::HandleBattlegroundPlayerPositionsOpcode(WorldPacket &recv_data)
 {
-	Battleground *bg = sBattlegroundMgr.GetBattleground(GetPlayer()->m_bgBattlegroundID);
-	if(bg == NULL) return;
-	WorldPacket *pkt = bg->BuildPlayerPositionsPacket(GetPlayer()); 
-	SendPacket(pkt);
-	delete pkt;
+	/* This packet doesn't appear to be used anymore... 
+	 * - Burlex
+	 */
 }
 
 void WorldSession::HandleBattleMasterJoinOpcode(WorldPacket &recv_data)
 {
-	if(!_player->IsInWorld()) return;
-	CHECK_PACKET_SIZE(recv_data, 17);
-	sLog.outString("BATTLEGROUND: Recieved CMSG_BATTLEMASTER_JOIN");
-	uint64 guid;
-	uint32 BattleGroundType;
-	uint32 instance;
-	uint8 unk;
-	recv_data >> guid >> BattleGroundType >> instance >> unk;
-	
-	WorldPacket *pkt = sBattlegroundMgr.BuildBattlegroundStatusPacket(0, BattleGroundType, (instance==0 ? 1 : instance), 1, 0x00FFFF00, 0);
-	SendPacket(pkt);
-	delete pkt;
+	/* are we already in a queue? */
+	if(_player->m_bgIsQueued)
+		BattlegroundManager.RemovePlayerFromQueues(_player);
 
-	Battleground *bg = sBattlegroundMgr.GetBattlegroundByInstanceID(instance,BattleGroundType);
-	if(!bg)
-		return;
-	
-	if(bg->HasFreeSlots(sBattlegroundMgr.GenerateTeamByRace(GetPlayer()->getRace())))
-	{	
-		GetPlayer()->m_bgBattlegroundID = bg->GetID();
-		
-		pkt = sBattlegroundMgr.BuildBattlegroundStatusPacket(0, BattleGroundType, (instance==0 ? 1 : instance), 2, 120, 0);
-		SendPacket(pkt);
-		delete pkt;
-	}
+	if(_player->IsInWorld())
+		BattlegroundManager.HandleBattlegroundJoin(this, recv_data);
 }
 
 void WorldSession::HandleArenaJoinOpcode(WorldPacket &recv_data)
 {
-	if(!_player->IsInWorld()) return;
-	CHECK_PACKET_SIZE(recv_data, 11);
-	sLog.outString("BATTLEGROUND: Recieved CMSG_ARENA_JOIN");
-	uint64 unk1;
-	uint8 arenatype; // 0 - 2vs2 , 1 - 3vs3, 2 - 5vs5
-	uint16 unk2;
+	/* are we already in a queue? */
+	if(_player->m_bgIsQueued)
+		BattlegroundManager.RemovePlayerFromQueues(_player);
 
-	recv_data >> unk1 >> arenatype >> unk2; // dunno yet how to handle this.
+	uint32 bgtype=0;
+	uint64 guid;
+	uint8 arenacategory;
+    recv_data >> guid >> arenacategory;
+	switch(arenacategory)
+	{
+	case 0:		// 2v2
+		bgtype = BATTLEGROUND_ARENA_2V2;
+		break;
 
-	Battleground *bg = sBattlegroundMgr.GetBattlegroundByInstanceID(0,5); // search for the first instance for now... 
-	if(!bg)
-		return;
+	case 1:		// 3v3
+		bgtype = BATTLEGROUND_ARENA_3V3;
+		break;
 
-	WorldPacket *pkt = sBattlegroundMgr.BuildBattlegroundStatusPacket(0, 5, 1, 1, 0x00FFFF00, 0); // put w8ting status.
-	SendPacket(pkt);
-	delete pkt;
-
-	if(bg->HasFreeSlots(sBattlegroundMgr.GenerateTeamByRace(GetPlayer()->getRace())))
-	{	
-		GetPlayer()->m_bgBattlegroundID = bg->GetID();
-		
-		pkt = sBattlegroundMgr.BuildBattlegroundStatusPacket(0, 5, 1, 2, 120, 0); // ask for player to join
-		SendPacket(pkt);
-		delete pkt;
+	case 2:		// 5v5
+		bgtype = BATTLEGROUND_ARENA_5V5;
+		break;
 	}
+
+	if(bgtype != 0)
+		BattlegroundManager.HandleArenaJoin(this, bgtype);
 }
 
 void WorldSession::HandleInspectHonorStatsOpcode(WorldPacket &recv_data)
 {
-	sLog.outString("Recieved MSG_INSPECT_HONOR_STATS");
+	/* This belongs in HonorHandler. :P
+	 * - Burlex
+	 */
+
+	sLog.outString("Received MSG_INSPECT_HONOR_STATS");
 }
 
 void WorldSession::HandlePVPLogDataOpcode(WorldPacket &recv_data)
 {
-	Battleground *bg = sBattlegroundMgr.GetBattleground(GetPlayer()->m_bgBattlegroundID);
-	if(bg == NULL) return;
-	WorldPacket *pkt = bg->BuildPVPLogDataPacket(GetPlayer(), bg->GetBattleGroundStatus(), bg->GetBattleGameWin());
-	SendPacket(pkt);
-	delete pkt;
+	if(_player->m_bg)
+		_player->m_bg->SendPVPData(_player);
 }
 

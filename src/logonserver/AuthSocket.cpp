@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -68,7 +73,12 @@ void AuthSocket::HandleChallenge()
 
 	// Check the rest of the packet is complete.
 	uint8 * ReceiveBuffer = this->GetReadBuffer(0);
+#ifdef USING_BIG_ENDIAN
+	uint16 full_size = swap16(*(uint16*)&ReceiveBuffer[2]);
+#else
 	uint16 full_size = *(uint16*)&ReceiveBuffer[2];
+#endif
+
 	sLog.outDetail("[AuthChallenge] got header, body is 0x%02X bytes", full_size);
 
 	if(GetReadBufferSize() < uint32(full_size+4))
@@ -85,10 +95,19 @@ void AuthSocket::HandleChallenge()
 
 	memcpy(&m_challenge, ReceiveBuffer, full_size + 4);
 	RemoveReadBufferBytes(full_size + 4, true);
-
+//#ifdef USING_BIG_ENDIAN
+//	uint16 build = swap16(m_challenge.build);
+//	printf("Build: %u\n", build);
+//#endif
+ 
 	// Check client build.
+#ifdef USING_BIG_ENDIAN
+	if(swap16(m_challenge.build) > LogonServer::getSingleton().max_build ||
+		swap16(m_challenge.build) < LogonServer::getSingleton().min_build)
+#else
 	if(m_challenge.build > LogonServer::getSingleton().max_build ||
 		m_challenge.build < LogonServer::getSingleton().min_build)
+#endif
 	{
 		SendChallengeError(CE_WRONG_BUILD_NUMBER);
 		return;
@@ -99,7 +118,7 @@ void AuthSocket::HandleChallenge()
 
 	switch(ipb)
 	{
-		case BAN_STATUS_PERMANANT_BAN:
+		case BAN_STATUS_PERMANENT_BAN:
 			SendChallengeError(CE_ACCOUNT_CLOSED);
 			return;
 
@@ -300,7 +319,11 @@ void AuthSocket::SendProofError(uint8 Error, uint8 * M2)
 	buffer[1] = Error;
 	if(M2 == 0)
 	{
+#ifdef USING_BIG_ENDIAN
+		*(uint32*)&buffer[2] = swap32(3);
+#else
 		*(uint32*)&buffer[2] = 3;
+#endif
 		Send(buffer, 6);
 		return;
 	}

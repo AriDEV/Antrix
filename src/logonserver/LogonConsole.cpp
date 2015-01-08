@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -18,25 +23,55 @@
 
 initialiseSingleton(LogonConsole);
 
+void LogonConsole::Kill()
+{
+#ifdef WIN32
+	/* write the return keydown/keyup event */
+	DWORD dwTmp;
+	INPUT_RECORD ir[2];
+	ir[0].EventType = KEY_EVENT;
+	ir[0].Event.KeyEvent.bKeyDown = TRUE;
+	ir[0].Event.KeyEvent.dwControlKeyState = 288;
+	ir[0].Event.KeyEvent.uChar.AsciiChar = 13;
+	ir[0].Event.KeyEvent.wRepeatCount = 1;
+	ir[0].Event.KeyEvent.wVirtualKeyCode = 13;
+	ir[0].Event.KeyEvent.wVirtualScanCode = 28;
+	ir[1].EventType = KEY_EVENT;
+	ir[1].Event.KeyEvent.bKeyDown = FALSE;
+	ir[1].Event.KeyEvent.dwControlKeyState = 288;
+	ir[1].Event.KeyEvent.uChar.AsciiChar = 13;
+	ir[1].Event.KeyEvent.wRepeatCount = 1;
+	ir[1].Event.KeyEvent.wVirtualKeyCode = 13;
+	ir[1].Event.KeyEvent.wVirtualScanCode = 28;
+	_thread->kill=true;
+	WriteConsoleInput (GetStdHandle(STD_INPUT_HANDLE), ir, 2, & dwTmp);
+	printf("Waiting for console thread to terminate....\n");
+	while(_thread != NULL)
+	{
+		Sleep(100);
+	}
+	printf("Console shut down.\n");
+#endif
+}
 void LogonConsoleThread::run()
 {
 	new LogonConsole;
 
 	SetThreadName("Console Interpreter");
 	sLogonConsole._thread = this;
-	sLogonConsole.running = true;
 	int i = 0;
 	char cmd[96];
 	
 
-	while (sLogonConsole.running)
+	while (!kill)
 	{
 		
 		// Make sure our buffer is clean to avoid Array bounds overflow
 		memset(cmd,0,sizeof(cmd)); 
 		// Read in single line from "stdin"
 		fgets(cmd, 80, stdin);
-		if(!sLogonConsole.running)
+
+		if(kill)
 			break;
 
 		for( i = 0 ; i < 80 || cmd[i] != '\0' ; i++ )
@@ -51,8 +86,7 @@ void LogonConsoleThread::run()
 		}
 	}
 
-	delete LogonConsole::getSingletonPtr();
-
+	sLogonConsole._thread=NULL;
 }
 
 //------------------------------------------------------------------------------
@@ -64,7 +98,7 @@ void LogonConsole::ProcessCmd(char *cmd)
 	typedef void (LogonConsole::*PTranslater)(char *str);
 	struct SCmd
 	{
-		char *name;
+		const char *name;
 		PTranslater tr;
 	};
 
@@ -132,7 +166,7 @@ void LogonConsole::ProcessHelp(char *command)
 
 LogonConsoleThread::LogonConsoleThread()
 {
-
+	kill=false;
 }
 
 LogonConsoleThread::~LogonConsoleThread()

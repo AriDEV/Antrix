@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,6 +33,14 @@ class WorldPacket;
 class SocketHandler;
 class WorldSession;
 
+enum OUTPACKET_RESULT
+{
+	OUTPACKET_RESULT_SUCCESS = 1,
+	OUTPACKET_RESULT_NO_ROOM_IN_BUFFER = 2,
+	OUTPACKET_RESULT_NOT_CONNECTED = 3,
+	OUTPACKET_RESULT_SOCKET_ERROR = 4,
+};
+
 class WorldSocket : public Socket
 {
 public:
@@ -39,6 +52,7 @@ public:
 	inline void SendPacket(StackBufferBase * packet) { if(!packet) return; OutPacket(packet->GetOpcode(), packet->GetSize(), (packet->GetSize() ? (const void*)packet->GetBufferPointer() : NULL)); }
 
 	void __fastcall OutPacket(uint16 opcode, uint16 len, const void* data);
+	OUTPACKET_RESULT __fastcall _OutPacket(uint16 opcode, uint16 len, const void* data);
    
 	inline uint32 GetLatency() { return _latency; }
 
@@ -54,6 +68,8 @@ public:
 	inline void SetSession(WorldSession * session) { mSession = session; }
 	inline WorldSession * GetSession() { return mSession; }
 	bool Authed;
+
+	void UpdateQueuedPackets();
 	
 protected:
 	
@@ -72,6 +88,8 @@ private:
 
 	WorldSession *mSession;
 	WorldPacket * pAuthenticationPacket;
+	FastQueue<WorldPacket*, DummyLock> _queue;
+	Mutex queueLock;
 
 	WowCrypt _crypt;
 	uint32 _latency;
@@ -151,7 +169,12 @@ inline unsigned int FastGUIDPack(const uint64 & oldguid, unsigned char * buffer,
 	uint8 guidmask = 0;
 
 	int j = 1 + pos;
+#ifdef USING_BIG_ENDIAN
+	uint64 t = swap64(oldguid);
+	uint8 * test = (uint8*)&t;
+#else
 	uint8 * test = (uint8*)&oldguid;
+#endif
 
 	if (*test) //7*8
 	{

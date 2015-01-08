@@ -1,19 +1,23 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Group System
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "StdAfx.h"
-
 
 //////////////////////////////////////////////////////////////
 /// This function handles CMSG_GROUP_INVITE
@@ -128,7 +132,7 @@ void WorldSession::HandleGroupAcceptOpcode( WorldPacket & recv_data )
 
 	if(grp)
 	{
-		grp->AddMember(_player);
+		grp->AddMember(_player->m_playerInfo, _player);
         _player->iInstanceType = grp->GetLeader()->iInstanceType;
         _player->GetSession()->OutPacket(CMSG_DUNGEON_DIFFICULTY, 4, &grp->GetLeader()->iInstanceType);
         sInstanceSavingManager.ResetSavedInstancesForPlayer(_player);
@@ -137,8 +141,8 @@ void WorldSession::HandleGroupAcceptOpcode( WorldPacket & recv_data )
 	
 	// If we're this far, it means we have no existing group, and have to make one.
 	grp = new Group;
-	grp->AddMember(player);		// add the inviter first, therefore he is the leader
-	grp->AddMember(_player);	   // add us.
+	grp->AddMember(player->m_playerInfo, player);		// add the inviter first, therefore he is the leader
+	grp->AddMember(_player->m_playerInfo, _player);	   // add us.
     _player->iInstanceType = player->iInstanceType;
     _player->GetSession()->OutPacket(CMSG_DUNGEON_DIFFICULTY, 4, &player->iInstanceType);
     sInstanceSavingManager.ResetSavedInstancesForPlayer(_player);
@@ -171,21 +175,22 @@ void WorldSession::HandleGroupUninviteOpcode( WorldPacket & recv_data )
 {
 	if(!_player->IsInWorld()) return;
 	CHECK_PACKET_SIZE(recv_data, 1);
-	WorldPacket data;
 	std::string membername;
 	Group *group;
 	Player * player;
+	PlayerInfo * info;
 
 	recv_data >> membername;
 
 	player = objmgr.GetPlayer(membername.c_str(), false);
-	if ( player == NULL )
+	info = objmgr.GetPlayerInfoByName(membername);
+	if ( player == NULL && info == NULL )
 	{
 		SendPartyCommandResult(_player, 0, membername, ERR_PARTY_CANNOT_FIND);
 		return;
 	}
 
-	if ( !_player->InGroup() || _player->GetGroup() != player->GetGroup() )
+	if ( !_player->InGroup() || info->m_Group != _player->GetGroup() )
 	{
 		SendPartyCommandResult(_player, 0, membername, ERR_PARTY_IS_NOT_IN_YOUR_PARTY);
 		return;
@@ -203,7 +208,7 @@ void WorldSession::HandleGroupUninviteOpcode( WorldPacket & recv_data )
 	group = _player->GetGroup();
 
 	if(group)
-		group->RemovePlayer(player);
+		group->RemovePlayer(info, player, true);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -252,7 +257,7 @@ void WorldSession::HandleGroupSetLeaderOpcode( WorldPacket & recv_data )
 
 	Group *pGroup = _player->GetGroup();
 	if(pGroup)
-		pGroup->SetLeader(player);
+		pGroup->SetLeader(player,false);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -264,7 +269,7 @@ void WorldSession::HandleGroupDisbandOpcode( WorldPacket & recv_data )
 	Group* pGroup = _player->GetGroup();
 	if(!pGroup) return;
 
-	pGroup->RemovePlayer(_player);
+	pGroup->RemovePlayer(_player->m_playerInfo, _player, true);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////

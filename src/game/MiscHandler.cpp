@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Packet Handler File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -110,15 +115,14 @@ void WorldSession::HandleAutostoreLootItemOpcode( WorldPacket & recv_data )
 
 		GetPlayer()->GetItemInterface()->SafeAddItem(item,slotresult.ContainerSlot, slotresult.Slot);
 		
-		if (it->Class == 12)		// Quest item
-			sQuestMgr.OnPlayerItemPickup(GetPlayer(),item);
+		sQuestMgr.OnPlayerItemPickup(GetPlayer(),item);
 	}
 	else 
 	{	
 		add->SetCount(add->GetUInt32Value(ITEM_FIELD_STACK_COUNT) + amt);
 		add->m_isDirty = true;
-		if (it->Class == 12)		// Quest item
-			sQuestMgr.OnPlayerItemPickup(GetPlayer(),add);
+
+		sQuestMgr.OnPlayerItemPickup(GetPlayer(),add);
 	}
 
 	pLoot->items.at(lootSlot).iItemsCount=0;
@@ -133,7 +137,7 @@ void WorldSession::HandleAutostoreLootItemOpcode( WorldPacket & recv_data )
 			plr->GetSession()->SendPacket(&data);
 	}
 
-    WorldPacket idata;
+    WorldPacket idata(45);
     if(it->Class == ITEM_CLASS_QUEST)
     {
         uint32 pcount = _player->GetItemInterface()->GetItemCount(it->ItemId, true);
@@ -145,6 +149,16 @@ void WorldSession::HandleAutostoreLootItemOpcode( WorldPacket & recv_data )
 		_player->GetGroup()->SendPacketToAll(&idata);
 	else
 		SendPacket(&idata);
+
+	/* any left yet? (for fishing bobbers) */
+	if(pGO && pGO->GetEntry() ==GO_FISHING_BOBBER)
+	{
+		int count=0;
+		for(vector<__LootItem>::iterator itr = pLoot->items.begin(); itr != pLoot->items.end(); ++itr)
+			count += (*itr).iItemsCount;
+		if(!count)
+			pGO->ExpireAndDelete();
+	}
 }
 
 void WorldSession::HandleLootMoneyOpcode( WorldPacket & recv_data )
@@ -235,15 +249,17 @@ void WorldSession::HandleLootMoneyOpcode( WorldPacket & recv_data )
 
 			GroupMembersSet::iterator itr;
 			SubGroup * sgrp;
+			party->getLock().Acquire();
 			for(uint32 i = 0; i < party->GetSubGroupCount(); i++)
 			{
 				sgrp = party->GetSubGroup(i);
 				for(itr = sgrp->GetGroupMembersBegin(); itr != sgrp->GetGroupMembersEnd(); ++itr)
 				{
-					if((*itr)->GetZoneId() == _player->GetZoneId() && _player->GetInstanceID() == (*itr)->GetInstanceID())
-						targets.push_back((*itr));
+					if(itr->player && itr->player->GetZoneId() == _player->GetZoneId() && _player->GetInstanceID() == itr->player->GetInstanceID())
+						targets.push_back(itr->player);
 				}
 			}
+			party->getLock().Release();
 
 			if(!targets.size())
 				return;
@@ -273,7 +289,7 @@ void WorldSession::HandleLootOpcode( WorldPacket & recv_data )
 	if(_player->isCasting())
 		_player->InterruptSpell();
 
-	if(_player->InGroup() && !_player->m_bgInBattleground)
+	if(_player->InGroup() && !_player->m_bg)
 	{
 		Group * party = _player->GetGroup();
 		if(party)
@@ -285,18 +301,20 @@ void WorldSession::HandleLootOpcode( WorldPacket & recv_data )
 				uint32 real_count = 0;
 				SubGroup *s;
 				GroupMembersSet::iterator itr;
+				party->Lock();
 				for(uint32 i = 0; i < party->GetSubGroupCount(); ++i)
 				{
 					s = party->GetSubGroup(i);
 					for(itr = s->GetGroupMembersBegin(); itr != s->GetGroupMembersEnd(); ++itr)
 					{
-						if(_player->GetZoneId() == (*itr)->GetZoneId())
+						if(itr->player && _player->GetZoneId() == itr->player->GetZoneId())
 						{
-							data << (*itr)->GetGUID();
+							data << itr->player->GetGUID();
 							++real_count;
 						}
 					}
 				}
+				party->Unlock();
 				*(uint8*)&data.contents()[0] = real_count;
 
 				party->SendPacketToAll(&data);
@@ -367,31 +385,107 @@ void WorldSession::HandleLootReleaseOpcode( WorldPacket & recv_data )
 		GameObject* pGO = _player->GetMapMgr()->GetGameObject(guid);
 		if(!pGO)
 			return;
-		pGO->loot.looters.erase(_player->GetGUID());
-		//GO MUST DISAPPEAR AFTER LOOTING,
-		//FIX ME: respawn time of GO must be added,15 minutes by default
-		//if this is not fishing bobber despawn it
-		if(pGO->GetUInt32Value(GAMEOBJECT_TYPE_ID)==GAMEOBJECT_TYPE_FISHINGNODE)
-		{
-			if(pGO->IsInWorld())
-			{
-				pGO->RemoveFromWorld();
-			}
-			delete pGO;
-		}
-		else
-		{
-			uint32 DespawnTime = 0;
-			if(sQuestMgr.GetGameObjectLootQuest(pGO->GetEntry()))
-				DespawnTime = 120000;	   // 5 min for quest GO,
-			else
-			{
-				DespawnTime = 900000;	   // 15 for else
-			}
+
+        switch(pGO->GetUInt32Value(GAMEOBJECT_TYPE_ID))
+        {
+        case GAMEOBJECT_TYPE_FISHINGNODE:
+            {
+		        pGO->loot.looters.erase(_player->GetGUID());
+                if(pGO->IsInWorld())
+			    {
+				    pGO->RemoveFromWorld();
+			    }
+			    delete pGO;
+            }break;
+        case GAMEOBJECT_TYPE_CHEST:
+            {
+                pGO->loot.looters.erase(_player->GetGUID());
+                //check for locktypes
+                
+                Lock *pLock = sLockStore.LookupEntry(pGO->GetInfo()->SpellFocus);
+                if(pLock)
+                {
+                    for(uint32 i=0; i < 5; i++)
+                    {
+                        if(pLock->locktype[i])
+                        {
+                            if(pLock->locktype[i] == 2) //locktype;
+                            {
+                                //herbalism and mining;
+                                if(pLock->lockmisc[i] == LOCKTYPE_MINING || pLock->lockmisc[i] == LOCKTYPE_HERBALISM)
+                                {
+                                    //we still have loot inside.
+                                    if(pGO->HasLoot())
+                                    {
+                                        pGO->SetUInt32Value(GAMEOBJECT_STATE, 1);
+                                        return;
+                                    }
+                                    if(pGO->CanMine())
+                                    {   pGO->loot.items.clear();
+                                        pGO->UseMine();
+                                       
+                                    }
+                                    else
+                                    {
+                                        uint32 DespawnTime = 0;
+
+			                            if(sQuestMgr.GetGameObjectLootQuest(pGO->GetEntry()))
+				                            DespawnTime = 120000;	   // 5 min for quest GO,
+			                            else
+			                            {
+				                            DespawnTime = 900000;	   // 15 for else
+			                            }
 
 
-			pGO->Despawn(DespawnTime);
-		}
+			                            pGO->Despawn(DespawnTime);
+										return;
+                                    }
+                                }
+                                else //other type of locks that i dont bother to split atm ;P
+                                {
+                                    if(pGO->HasLoot())
+                                    {
+                                        pGO->SetUInt32Value(GAMEOBJECT_STATE, 1);
+                                        return;
+                                    }
+                    			    uint32 DespawnTime = 0;
+			                        if(sQuestMgr.GetGameObjectLootQuest(pGO->GetEntry()))
+				                        DespawnTime = 120000;	   // 5 min for quest GO,
+			                        else
+			                        {
+				                        DespawnTime = 900000;	   // 15 for else
+			                        }
+
+
+			                        pGO->Despawn(DespawnTime);
+									return;
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    if(pGO->HasLoot())
+                    {
+                        pGO->SetUInt32Value(GAMEOBJECT_STATE, 1);
+                        return;
+                    }
+                    uint32 DespawnTime = 0;
+			        if(sQuestMgr.GetGameObjectLootQuest(pGO->GetEntry()))
+				        DespawnTime = 120000;	   // 5 min for quest GO,
+			        else
+			        {
+				        DespawnTime = 900000;	   // 15 for else
+			        }
+
+
+			        pGO->Despawn(DespawnTime);
+
+                }
+            }
+        default: break;
+        }
 	}
 	else if(UINT32_LOPART(GUID_HIPART(guid)) == HIGHGUID_CORPSE)
 	{
@@ -474,7 +568,7 @@ void WorldSession::HandleWhoOpcode( WorldPacket & recv_data )
 	uint32 sent_count = 0;
 	uint32 total_count = 0;
 
-	HM_NAMESPACE::hash_map<uint32, Player*>::const_iterator itr,iend;
+	PlayerStorageMap::const_iterator itr,iend;
 	Player * plr;
 	uint32 lvl;
 	bool add;
@@ -492,6 +586,12 @@ void WorldSession::HandleWhoOpcode( WorldPacket & recv_data )
 
 		if(!plr->GetSession() || !plr->IsInWorld())
 			continue;
+
+		if(!sWorld.show_gm_in_who_list && !HasGMPermissions())
+		{
+			if(plr->GetSession()->HasGMPermissions())
+				continue;
+		}
 
 		// Team check
 		if(!gm && plr->GetTeam() != team && !plr->GetSession()->HasGMPermissions())
@@ -593,6 +693,10 @@ void WorldSession::HandleLogoutRequestOpcode( WorldPacket & recv_data )
 			pPlayer->GetTaxiState() ||  // or we are on a taxi
 			HasGMPermissions())		   // or we are a gm
 		{
+			/* full remove from group */
+			if(_player->m_Group)
+				_player->m_Group->RemovePlayer(_player->m_playerInfo, _player, true);
+
 			LogoutPlayer(true);
 			return;
 		}
@@ -698,16 +802,10 @@ void WorldSession::HandleSetSelectionOpcode( WorldPacket & recv_data )
 {
 	uint64 guid;
 	recv_data >> guid;
+	_player->SetSelection(guid);
 
-	if( GetPlayer( ) != 0 )
-		GetPlayer( )->SetSelection(guid);
-	else
-		return;
-
-	if(_player->m_comboPoints && _player->m_comboTarget != guid)
-	{ // if its a new Target set Combo Points Target to 0
-		_player->ResetComboPoints();
-	}
+	if(_player->m_comboPoints)
+		_player->UpdateComboPoints();
 
 	_player->SetUInt64Value(UNIT_FIELD_TARGET, guid);
 	if(guid == 0 && _player->getAttackTarget())
@@ -780,9 +878,9 @@ void WorldSession::HandleBugOpcode( WorldPacket & recv_data )
 	recv_data >> suggestion >> contentlen >> content >> typelen >> type;
 
 	if( suggestion == 0 )
-		sLog.outDebug( "WORLD: Recieved CMSG_BUG [Bug Report]" );
+		sLog.outDebug( "WORLD: Received CMSG_BUG [Bug Report]" );
 	else
-		sLog.outDebug( "WORLD: Recieved CMSG_BUG [Suggestion]" );
+		sLog.outDebug( "WORLD: Received CMSG_BUG [Suggestion]" );
 
 	sLog.outDebug( type.c_str( ) );
 	sLog.outDebug( content.c_str( ) );
@@ -872,14 +970,15 @@ void WorldSession::HandleUpdateAccountData(WorldPacket &recv_data)
 		return;
 	}
 
-	uint32 RecievedPackedSize = recv_data.size() - 8;
+	uint32 ReceivedPackedSize = recv_data.size() - 8;
 	char* data = new char[uiDecompressedSize+1];
+	memset(data,0,uiDecompressedSize+1);	/* fix umr here */
 
-	if(uiDecompressedSize > RecievedPackedSize) // if packed is compressed
+	if(uiDecompressedSize > ReceivedPackedSize) // if packed is compressed
 	{
 		int32 ZlibResult;
 
-		ZlibResult = uncompress((uint8*)data, &uid, recv_data.contents() + 8, RecievedPackedSize);
+		ZlibResult = uncompress((uint8*)data, &uid, recv_data.contents() + 8, ReceivedPackedSize);
 		
 		switch (ZlibResult)
 		{
@@ -961,7 +1060,7 @@ void WorldSession::HandleRequestAccountData(WorldPacket& recv_data)
 
 void WorldSession::HandleSetActionButtonOpcode(WorldPacket& recv_data)
 {
-	sLog.outDebug( "WORLD: Recieved CMSG_SET_ACTION_BUTTON" ); 
+	sLog.outDebug( "WORLD: Received CMSG_SET_ACTION_BUTTON" ); 
 	uint8 button, misc, type; 
 	uint16 action; 
 	recv_data >> button >> action >> misc >> type; 
@@ -1034,14 +1133,14 @@ void WorldSession::HandleGameObjectUse(WorldPacket & recv_data)
 	uint64 guid;
 	recv_data >> guid;
 	SpellCastTargets targets;
-	Spell *spell;
-	SpellEntry *spellInfo;
+	Spell *spell = NULL;;
+	SpellEntry *spellInfo = NULL;;
 	sLog.outDebug("WORLD: CMSG_GAMEOBJ_USE: [GUID %d]", guid);   
 
 	GameObject *obj = _player->GetMapMgr()->GetGameObject(guid);
 	if (!obj) return;
 	GameObjectInfo *goinfo= obj->GetInfo();
-//	if (!goinfo) return;
+	if (!goinfo) return;
 
 	Player *plyr = GetPlayer();
    
@@ -1053,6 +1152,10 @@ void WorldSession::HandleGameObjectUse(WorldPacket & recv_data)
 	{
 		case GAMEOBJECT_TYPE_CHAIR:
 		{
+            /// if players are mounted they are not able to sit on a chair
+            if( plyr->IsMounted() )
+                return;
+
 			WorldPacket data(MSG_MOVE_HEARTBEAT, 66);
 			data << plyr->GetNewGUID();
 			data << uint64(0);
@@ -1081,27 +1184,22 @@ void WorldSession::HandleGameObjectUse(WorldPacket & recv_data)
 			{
 				obj->SetUInt32Value(GAMEOBJECT_FLAGS, 33);
 				obj->SetUInt32Value(GAMEOBJECT_STATE, 0);
-				sEventMgr.AddEvent(obj,&GameObject::EventCloseDoor,EVENT_GAMEOBJECT_DOOR_CLOSE,20000,1);
+				sEventMgr.AddEvent(obj,&GameObject::EventCloseDoor,EVENT_GAMEOBJECT_DOOR_CLOSE,20000,1,0);
 			}
 		}break;
 	case GAMEOBJECT_TYPE_FLAGSTAND:
 		{
 			// battleground/warsong gulch flag
-			// CAPTURE!
-			if(plyr->GetCurrentBattleground() != NULL)
-			{
-				// Send "capture" message to battleground
-				plyr->GetCurrentBattleground()->HandleBattlegroundEvent(plyr, obj, BGEVENT_WSG_CAPTURE_FLAG);
-			}
+			if(plyr->m_bg)
+				plyr->m_bg->HookFlagStand(plyr, obj);
+
 		}break;
 	case GAMEOBJECT_TYPE_FLAGDROP:
 		{
 			// Dropped flag
-			if(plyr->GetCurrentBattleground() != NULL)
-			{			
-				// Send "capture" message to battleground
-				plyr->GetCurrentBattleground()->HandleBattlegroundEvent(plyr, obj, BGEVENT_WSG_PICKUP_FLAG);
-			}
+			if(plyr->m_bg)
+				plyr->m_bg->HookFlagDrop(plyr, obj);
+
 		}break;
 	case GAMEOBJECT_TYPE_QUESTGIVER:
 		{
@@ -1121,7 +1219,7 @@ void WorldSession::HandleGameObjectUse(WorldPacket & recv_data)
 			SpellCastTargets targets;
 			targets.m_unitTarget = plyr->GetGUID();
 			spell->prepare(&targets);
-			if(!--obj->charges)
+			if(obj->charges>0 && !--obj->charges)
 				obj->ExpireAndDelete();
 		}break;
 	case GAMEOBJECT_TYPE_RITUAL: 
@@ -1231,14 +1329,19 @@ void WorldSession::HandleGameObjectUse(WorldPacket & recv_data)
 		}
 	case GAMEOBJECT_TYPE_CAMERA://eye of azora
 		{
-			WorldPacket pkt(SMSG_TRIGGER_CINEMATIC,4);
+			/*WorldPacket pkt(SMSG_TRIGGER_CINEMATIC,4);
 			pkt << (uint32)1;//i ve found only on such item,id =1
-			SendPacket(&pkt);
+			SendPacket(&pkt);*/
+
+			/* these are usually scripted effects. but in the case of some, (e.g. orb of translocation) the spellid is located in unknown1 */
+			SpellEntry * sp = static_cast<FastIndexedDataStore<SpellEntry>*>(SpellStore::getSingletonPtr())->LookupEntryForced(goinfo->Unknown1);
+			if(sp != NULL)
+				_player->CastSpell(_player,sp,true);
 		}break;
 	case GAMEOBJECT_TYPE_MEETINGSTONE:	// Meeting Stone
 		{
 			/* Use selection */
-			Player * pPlayer = _player->GetMapMgr()->GetPlayer((uint32)_player->GetSelection());
+            Player * pPlayer = objmgr.GetPlayer(_player->GetSelection());
 			if(!pPlayer || _player->m_Group != pPlayer->m_Group || !_player->m_Group)
 				return;
 
@@ -1260,7 +1363,7 @@ void WorldSession::HandleGameObjectUse(WorldPacket & recv_data)
 			_player->SetUInt32Value(UNIT_CHANNEL_SPELL, pGo->m_ritualspell);
 			
 			/* expire after 2mins*/
-			sEventMgr.AddEvent(pGo, &GameObject::_Expire, EVENT_GAMEOBJECT_EXPIRE, 120000, 1);
+			sEventMgr.AddEvent(pGo, &GameObject::_Expire, EVENT_GAMEOBJECT_EXPIRE, 120000, 1,0);
 		}break;
 	}   
 }
@@ -1319,7 +1422,7 @@ void WorldSession::HandleSetActionBarTogglesOpcode(WorldPacket &recvPacket)
 {
 	uint8 cActionBarId;
 	recvPacket >> cActionBarId;
-	sLog.outDebug("Recieved CMSG_SET_ACTIONBAR_TOGGLES for actionbar id %d.", cActionBarId);
+	sLog.outDebug("Received CMSG_SET_ACTIONBAR_TOGGLES for actionbar id %d.", cActionBarId);
    
 	GetPlayer()->SetByte(PLAYER_FIELD_BYTES,2, cActionBarId);
 }
@@ -1516,8 +1619,7 @@ void WorldSession::HandleLootMasterGiveOpcode(WorldPacket& recv_data)
 
 	player->GetItemInterface()->SafeAddItem(item,slotresult.ContainerSlot, slotresult.Slot);
 	
-	if (it->Class == 12)		// Quest item
-		sQuestMgr.OnPlayerItemPickup(player,item);
+	sQuestMgr.OnPlayerItemPickup(player,item);
 
 	pLoot->items.at(slotid).iItemsCount=0;
 
@@ -1532,13 +1634,16 @@ void WorldSession::HandleLootMasterGiveOpcode(WorldPacket& recv_data)
 			plr->GetSession()->SendPacket(&data);
 	}
 
-    WorldPacket idata;
+    WorldPacket idata(45);
     if(it->Class == ITEM_CLASS_QUEST)
     {
         uint32 pcount = player->GetItemInterface()->GetItemCount(it->ItemId, true);
 		BuildItemPushResult(&idata, GetPlayer()->GetGUID(), ITEM_PUSH_TYPE_LOOT, amt, itemid, pLoot->items.at(slotid).iRandomProperty,0xFF,0,0xFFFFFFFF,pcount);
     }
-    else BuildItemPushResult(&idata, player->GetGUID(), ITEM_PUSH_TYPE_LOOT, amt, itemid, pLoot->items.at(slotid).iRandomProperty);
+    else
+    {
+        BuildItemPushResult(&idata, player->GetGUID(), ITEM_PUSH_TYPE_LOOT, amt, itemid, pLoot->items.at(slotid).iRandomProperty);
+    }
 
 	if(_player->InGroup())
 		_player->GetGroup()->SendPacketToAll(&idata);
@@ -1722,6 +1827,9 @@ void WorldSession::HandleSummonResponseOpcode(WorldPacket & recv_data)
 		return;
 	}
 
+	if(_player->isInCombat())
+		return;
+
 	_player->SafeTeleport(_player->m_summonMapId, _player->m_summonInstanceId, 
 		_player->m_summonPos);
 
@@ -1732,10 +1840,11 @@ void WorldSession::HandleDismountOpcode(WorldPacket& recv_data)
 {
 	sLog.outDebug( "WORLD: Received CMSG_DISMOUNT"  );
 
-	if( !_player->IsInWorld() )
+	if( !_player->IsInWorld() || _player->GetTaxiState())
 		return;
 
 	if( _player->m_MountSpellId )
 		_player->RemoveAura( _player->m_MountSpellId );
 }
+
 

@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Script Engine
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * GameMonkey Script License
  * Copyright (c) 2003 Auran Development Ltd.
@@ -35,6 +40,8 @@ void ScriptEngine::SetPlayerFunctionTable()
 		{ "Teleport",							Player_Teleport						},
 		{ "GetStanding",						Player_GetReputationValue			},
 		{ "GetStandingRank",					Player_GetReputationRank			},
+		{ "HasQuest",                           Player_HasQuest                     },
+		{ "HasItem",                            Player_HasItem                      },
 		{ "HasFinishedQuest",					Player_HasFinishedQuest				},
 		{ "LearnSpell",							Player_LearnSpell					},
 		{ "UnlearnSpell",						Player_RemoveSpell					},
@@ -45,14 +52,19 @@ void ScriptEngine::SetPlayerFunctionTable()
 		{ "SendNotification",					Player_SendNotification				},
 		{ "Knockback",							Player_Knockback					},
 		{ "JoinInstance",						Player_JoinInstance					},
+		{ "SetLevel",							Player_SetLevel						},
+		{ "LevelUp",							Player_LevelUp						},
+		{ "Kick",								Player_Kick							},
 
 		// Imported Unit Functions
+		{ "GetHealthPct",						Unit_GetHealthPct					},
 		{ "Emote",								Unit_Emote							},
 		{ "SendChatMessage",					Unit_SendChatMessage				},
 		{ "Despawn",							Unit_Despawn						},
 		{ "CastSpell",							Unit_CastSpell						},
 		{ "CastSpellOnTarget",					Unit_CastSpellOnTarget				},
 		{ "SpawnMonster",						Unit_SpawnMonster					},
+		{ "RemoveAura",							Unit_RemoveAura						},
 		{ "RegisterEvent",						GM_RegisterEvent					},
 		{ "SpawnWithoutWorld",					Unit_SpawnWithoutWorld				},
 		{ "StopMovement",						Unit_HaltMovement					},
@@ -62,6 +74,17 @@ void ScriptEngine::SetPlayerFunctionTable()
 		{ "GetPlayer",							Unit_GetPlayer						},
 		{ "GetGuid",							Unit_GetGuid						},
 		{ "PlaySoundToSet",						Unit_PlaySoundToSet					},
+
+		{ "GetName",							Unit_GetName						},
+		{ "GetClosestPlayer",					Unit_GetClosestPlayer				},
+		{ "GetClosestUnit",						Unit_GetClosestUnit					},
+		{ "GetClosestCreatureByEntry",			Unit_GetClosestUnitByEntry			},
+		{ "GetPositionX",						Unit_GetPositionX					},
+		{ "GetPositionY",						Unit_GetPositionY					},
+		{ "GetPositionZ",						Unit_GetPositionZ					},
+		{ "GetFacing",							Unit_GetFacing						},
+		{ "AttackReaction",						Unit_AddToHated						},
+		{ "Spawngameobject",                    Unit_Spawngameobject                },
 	};
 
 	m_machine->RegisterTypeLibrary(m_playerType, table, sizeof(table) / sizeof(table[0]));
@@ -70,6 +93,7 @@ void ScriptEngine::SetPlayerFunctionTable()
 void ScriptEngine::SetUnitFunctionTable()
 {
 	static gmFunctionEntry table[] = {
+		{ "GetHealthPct",						Unit_GetHealthPct					},
 		{ "Emote",								Unit_Emote							},
 		{ "SendChatMessageAltEntry",			Unit_SendChatMessageAltEntry		},
 		{ "SendChatMessage",					Unit_SendChatMessage				},
@@ -80,6 +104,8 @@ void ScriptEngine::SetUnitFunctionTable()
 		{ "RegisterTimer",						Unit_RegisterTimer					},
 		{ "DeregisterTimer",					Unit_DeregisterTimer				},
 		{ "SpawnMonster",						Unit_SpawnMonster					},
+		{ "RemoveAura",							Unit_RemoveAura						},
+		{ "Spawngameobject",                    Unit_Spawngameobject                },
 		{ "SetStandState",						Unit_SetStandState					},
 		{ "RegisterEvent",						GM_RegisterEvent					},
 		{ "SpawnWithoutWorld",					Unit_SpawnWithoutWorld				},
@@ -107,6 +133,18 @@ void ScriptEngine::SetUnitFunctionTable()
 		{ "ChangeFaction",						Unit_ChangeFaction					},
 		{ "TextEmote",							Unit_TextEmote						},
 		{ "PlaySoundToSet",						Unit_PlaySoundToSet					},
+		{ "SendYellMessage",					Unit_SendYellMessage				},
+		{ "GetName",							Unit_GetName						},
+		{ "GetClosestPlayer",					Unit_GetClosestPlayer				},
+		{ "GetClosestUnit",						Unit_GetClosestUnit					},
+		{ "IsInCombat",							Unit_InCombat						},
+		{ "GetClosestCreatureByEntry",			Unit_GetClosestUnitByEntry			},
+		{ "GetPositionX",						Unit_GetPositionX					},
+		{ "GetPositionY",						Unit_GetPositionY					},
+		{ "GetPositionZ",						Unit_GetPositionZ					},
+		{ "GetFacing",							Unit_GetFacing						},
+		{ "ReturnToSpawn",						Unit_ReturnToSpawn					},
+		{ "GetRandomPlayer",					Unit_GetRandomPlayer				},
 	};
 
 	m_machine->RegisterTypeLibrary(m_unitType, table, sizeof(table) / sizeof(table[0]));
@@ -133,6 +171,15 @@ void ScriptEngine::SetGameObjectFunctionTable()
 		{ "GetGuid",							Unit_GetGuid						},
 		{ "RegisterEvent",						GM_RegisterEvent					},
 		{ "PlaySoundToSet",						Unit_PlaySoundToSet					},
+		{ "SpawnMonster",						Unit_SpawnMonster					},
+		{ "GetClosestPlayer",					Unit_GetClosestPlayer				},
+		{ "GetClosestUnit",						Unit_GetClosestUnit					},
+		{ "GetClosestCreatureByEntry",			Unit_GetClosestUnitByEntry			},
+		{ "GetPositionX",						Unit_GetPositionX					},
+		{ "GetPositionY",						Unit_GetPositionY					},
+		{ "GetPositionZ",						Unit_GetPositionZ					},
+		{ "GetFacing",							Unit_GetFacing						},
+		{ "AddThreat",							Unit_AddThreat						},
 	};
 
 	m_machine->RegisterTypeLibrary(m_gameObjectType, table, sizeof(table) / sizeof(table[0]));
@@ -180,6 +227,9 @@ void ScriptEngine::SetScriptEngineFunctionTable()
 	// Register Normal Functions
 	m_machine->RegisterLibraryFunction("Rand", GM_RAND, 0, 0);
 	m_machine->RegisterLibraryFunction("GetUnitBySqlId", GM_GetUnitBySqlId, 0, 0);
+	m_machine->RegisterLibraryFunction("sprintf", GM_RAND, 0, 0);
+	m_machine->RegisterLibraryFunction("GetDistance", GM_GetDistance, 0, 0);
+	
 }
 
 

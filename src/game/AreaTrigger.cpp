@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Areatrigger Handler
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -26,18 +31,25 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 {		
 	sLog.outDebug("AreaTrigger: %u", id);
 
-	WorldPacket data(80);
 	AreaTrigger * pAreaTrigger = AreaTriggerStorage.LookupEntry(id);
 
-	// Search quest log, find any exploration quests
+	// Are we REALLY here?
+	if(pAreaTrigger)
+	{
+		LocationVector l(pAreaTrigger->x, pAreaTrigger->y, pAreaTrigger->z);
+		if((_player->GetMapId() == pAreaTrigger->Mapid) && _player->CalcDistance(l) > sWorld.GetUpdateDistance())
+			return;
+	}
+
+    // Search quest log, find any exploration quests
 	sQuestMgr.OnPlayerExploreArea(GetPlayer(),id);
 	
 	// if in BG handle is triggers
-	if(GetPlayer()->m_bgInBattleground && GetPlayer()->GetCurrentBattleground() != NULL)
+	if(_player->m_bg)
 	{
-		GetPlayer()->GetCurrentBattleground()->HandleBattlegroundAreaTrigger(GetPlayer(), id);
+		_player->m_bg->HookOnAreaTrigger(_player, id);
 		return;
-	}   
+	}
 
 	if(GetPermissionCount())
 	{
@@ -68,11 +80,11 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 		else if(pAreaTrigger->Mapid == 30)
 			pAreaTrigger->Mapid = 1;
 			
-		WorldPacket *pkt = sBattlegroundMgr.BuildBattlegroundListPacket(GetPlayer()->GetGUID(), _player,
+		/*WorldPacket *pkt = sBattlegroundMgr.BuildBattlegroundListPacket(GetPlayer()->GetGUID(), _player,
 			pAreaTrigger->Mapid);
 		SendPacket(pkt);
 		delete pkt;
-		return;
+		return;*/
 	}
 
 	bool bFailedPre = false;
@@ -97,11 +109,11 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 	if(bFailedPre)
 	{
 		failed_reason += " before you're allowed through here.";
-		WorldPacket msg;
+		WorldPacket msg(4 + 1 + 1 + failed_reason.size());
 		msg.Initialize(SMSG_AREA_TRIGGER_MESSAGE);
 		msg << uint32(0) << failed_reason << uint8(0);
 		SendPacket(&msg);
-		sLog.outDebug("Player %s failed areatrigger prereq - %s", GetPlayer()->GetName(), failed_reason.c_str());
+		sLog.outDebug("Player %s failed area trigger prereq - %s", GetPlayer()->GetName(), failed_reason.c_str());
 		return;
 	}
 	switch(pAreaTrigger->Type)
@@ -120,7 +132,7 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 				pMapinfo = WorldMapInfoStorage.LookupEntry(pAreaTrigger->Mapid);
 				if(pMapinfo && !pMapinfo->HasFlag(WMI_INSTANCE_ENABLED))
 				{
-					WorldPacket msg;
+					WorldPacket msg(47);
 					msg.Initialize(SMSG_AREA_TRIGGER_MESSAGE);
 					msg << uint32(0) << "This instance is currently unavailable." << uint8(0) << uint8(0);
 					SendPacket(&msg);
@@ -129,7 +141,7 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 
 				if(pMapinfo && pMapinfo->HasFlag(WMI_INSTANCE_XPACK_01) && !HasFlag(ACCOUNT_FLAG_XPACK_01))
 				{
-					WorldPacket msg;
+					WorldPacket msg(72);
 					msg.Initialize(SMSG_BROADCAST_MSG);
 					msg << uint32(3) << "You must have The Burning Crusade Expansion to access this content." << uint8(0);
 					SendPacket(&msg);
@@ -138,7 +150,7 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 
                 if(pMapinfo && pMapinfo->type != INSTANCE_MULTIMODE && GetPlayer()->iInstanceType == MODE_HEROIC && pMapinfo->type != INSTANCE_NULL)
                 {
-					WorldPacket msg;
+					WorldPacket msg(54);
 					msg.Initialize(SMSG_AREA_TRIGGER_MESSAGE);
 					msg << uint32(0) << "Heroic mode is not available for this instance." << uint8(0) << uint8(0);
 					SendPacket(&msg);
@@ -147,15 +159,16 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 
 				if(pMapinfo && pMapinfo->type == INSTANCE_RAID && GetPlayer()->InGroup() && GetPlayer()->GetGroup()->GetGroupType() != GROUP_TYPE_RAID)
 				{
-					WorldPacket msg;
+					WorldPacket msg(72);
 					msg.Initialize(SMSG_AREA_TRIGGER_MESSAGE);
 					msg << uint32(0) << "You need to be in a raid group to be able to enter this instance." << uint8(0) << uint8(0);
 					SendPacket(&msg);
 					return;
 				}
+
 				if(pMapinfo && pMapinfo->type == INSTANCE_RAID && !GetPlayer()->InGroup())
 				{
-					WorldPacket msg;
+					WorldPacket msg(72);
 					msg.Initialize(SMSG_AREA_TRIGGER_MESSAGE);
 					msg << uint32(0) << "You need to be in a raid group to be able to enter this instance." << uint8(0) << uint8(0);
 					SendPacket(&msg);
@@ -164,7 +177,7 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 
 				if(pMapinfo && pMapinfo->required_quest && !_player->HasFinishedQuest(pMapinfo->required_quest))
 				{
-					WorldPacket msg;
+					WorldPacket msg( 68 );
 					msg.Initialize(SMSG_AREA_TRIGGER_MESSAGE);
 					msg << uint32(0) << "You do not have the required attunement to enter this instance.";
 					SendPacket(&msg);
@@ -173,7 +186,7 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 
 				if(pMapinfo && pMapinfo->required_item && !_player->GetItemInterface()->GetItemCount(pMapinfo->required_item, true))
 				{
-					WorldPacket msg;
+					WorldPacket msg(68);
 					msg.Initialize(SMSG_AREA_TRIGGER_MESSAGE);
 					msg << uint32(0) << "You do not have the required attunement to enter this instance.";
 					SendPacket(&msg);
@@ -195,6 +208,7 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 								{
 									if(groupinstance->GetPlayerCount() >= pMapinfo->playerlimit)
                                     {
+                                        WorldPacket data(4);
                                         data.Initialize(SMSG_TRANSFER_ABORTED);
 								        data << uint32(INSTANCE_ABORT_FULL);
 								        _player->GetSession()->SendPacket(&data);
@@ -202,7 +216,6 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
                                         GetPlayer()->ResurrectPlayer();
 								        return;
                                     }
-
                                 }
 							}
 
@@ -257,7 +270,7 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 			pMapinfo = WorldMapInfoStorage.LookupEntry(pAreaTrigger->Mapid);
 			if(pMapinfo && pMapinfo->HasFlag(WMI_INSTANCE_XPACK_01) && !HasFlag(ACCOUNT_FLAG_XPACK_01))
 			{
-				WorldPacket msg;
+				WorldPacket msg(73);
 				msg.Initialize(SMSG_BROADCAST_MSG);
 				msg << uint32(3) << "You must have The Burning Crusade Expansion to access this content." << uint8(0);
 				SendPacket(&msg);
@@ -267,4 +280,3 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 	default:break;
 	}
 }
-

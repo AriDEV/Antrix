@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -21,6 +26,9 @@
 
 class Map;
 struct Instance_Map_InstanceId_Holder;
+
+#define MAKE_CELL_EVENT(x,y) ( ((x) * 1000) + 200 + y )
+#define DECODE_CELL_EVENT(dest_x, dest_y, ev) (dest_x) = ((ev-200)/1000); (dest_y) = ((ev-200)%1000);
 
 class MapCell
 {
@@ -54,9 +62,19 @@ public:
 	void LoadObjects(CellSpawns * sp, Instance_Map_InstanceId_Holder * pInstance);
 	inline uint32 GetPlayerCount() { return _playerCount; }
 
+	inline bool IsUnloadPending() { return _unloadpending; }
+	inline void SetUnloadPending(bool up) { _unloadpending = up; }
+	void QueueUnloadPending();
+	void CancelPendingUnload();
+	void Unload();
+
+	ObjectSet _respawnObjects;
+
 private:
+	uint16 _x,_y;
 	ObjectSet _objects;
 	bool _active, _loaded;
+	bool _unloadpending;
 	uint16 _playerCount;
 	MapMgr* _mapmgr;
 };

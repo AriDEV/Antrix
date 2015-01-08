@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -30,6 +35,7 @@ class Player;
 class Pet;
 class Transporter;
 class Corpse;
+class CBattleground;
 
 
 enum MapMgrTimers
@@ -93,6 +99,11 @@ public:
 			memset(&m_GOStorage[m_GOHighGuid],0,(m_GOArraySize-m_GOHighGuid)*sizeof(GameObject*));
 		}
 		return new GameObject(HIGHGUID_GAMEOBJECT, m_GOHighGuid);
+	}
+
+	__inline uint32 GenerateGameobjectGuid()
+	{
+		return ++m_GOHighGuid;
 	}
 
 	__inline GameObject * GetGameObject(uint32 guid)
@@ -159,7 +170,9 @@ public:
 //////////////////////////////////////////////////////////
 // Local (mapmgr) storage of players for faster lookup
 ////////////////////////////////
-	typedef HM_NAMESPACE::hash_map<uint32, Player*> PlayerStorageMap;
+    
+    // double typedef lolz// a compile breaker..
+	typedef HM_NAMESPACE::hash_map<uint32, Player*>                     PlayerStorageMap;
 	PlayerStorageMap m_PlayerStorage;
 	__inline Player * GetPlayer(uint32 guid)
 	{
@@ -194,6 +207,7 @@ public:
 
 
 	void PushObject(Object *obj);
+	void PushStaticObject(Object * obj);
 	void RemoveObject(Object *obj);
 	void ChangeObjectLocation(Object *obj); // update inrange lists
 	void ChangeFarsightLocation(Player *plr, Creature *farsight);
@@ -204,11 +218,11 @@ public:
 	void UpdateCellActivity(uint32 x, uint32 y, int radius);
 
 	// Terrain Functions
-	inline float  GetLandHeight(float x, float y) { return GetBaseMap()->GetTerrainMgr()->GetLandHeight(x, y); }
-	inline float  GetWaterHeight(float x, float y) { return GetBaseMap()->GetTerrainMgr()->GetWaterHeight(x, y); }
-	inline uint8  GetWaterType(float x, float y) { return GetBaseMap()->GetTerrainMgr()->GetWaterType(x, y); }
-	inline uint8  GetWalkableState(float x, float y) { return GetBaseMap()->GetTerrainMgr()->GetWalkableState(x, y); }
-	inline uint16 GetAreaID(float x, float y) { return GetBaseMap()->GetTerrainMgr()->GetAreaID(x, y); }
+	inline float  GetLandHeight(float x, float y) { return GetBaseMap()->GetLandHeight(x, y); }
+	inline float  GetWaterHeight(float x, float y) { return GetBaseMap()->GetWaterHeight(x, y); }
+	inline uint8  GetWaterType(float x, float y) { return GetBaseMap()->GetWaterType(x, y); }
+	inline uint8  GetWalkableState(float x, float y) { return GetBaseMap()->GetWalkableState(x, y); }
+	inline uint16 GetAreaID(float x, float y) { return GetBaseMap()->GetAreaID(x, y); }
 
 	inline uint32 GetMapId() { return _mapId; }
 
@@ -255,6 +269,10 @@ public:
 	bool thread_is_alive;
 	bool delete_pending;
 
+	void UnloadCell(uint32 x,uint32 y);
+	void EventRespawnCreature(Creature * c, MapCell * p);
+	void EventRespawnGameObject(GameObject * o, MapCell * c);
+
 protected:
 
 	//! Collect and send updates to clients
@@ -264,6 +282,7 @@ private:
 	//! Objects that exist on map
  
 	uint32 _mapId;
+	set<Object*> _mapWideStaticObjects;
 
 	bool _CellActive(uint32 x, uint32 y);
 	void UpdateInRangeSet(Object *obj, Player *plObj, MapCell* cell, ByteBuffer ** buf);
@@ -296,7 +315,8 @@ public:
 	GameObjectSet activeGameObjects;
 	CreatureSet activeCreatures;
 	EventableObjectHolder eventHolder;
-	Battleground * m_battleground;
+	CBattleground * m_battleground;
+	set<Corpse*> m_corpses;
 };
 
 #endif

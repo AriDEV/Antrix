@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Faction Checks
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -16,9 +21,6 @@
 #define __FACTION_H
 
 #include "Unit.h"
-
-
-#include "StdAfx.h"
 
 inline bool isHostile(Object* objA, Object* objB)// B is hostile for A?
 {
@@ -147,6 +149,10 @@ inline bool isAttackable(Object* objA, Object* objB)// A can attack B?
 		if(objB->HasFlag(UNIT_FIELD_FLAGS, U_FIELD_FLAG_UNIT_UNTACKABLE_NO_SELECT))
 			return false;
 		if(objB->HasFlag(UNIT_FIELD_FLAGS, U_FIELD_FLAG_MAKE_CHAR_UNTOUCHABLE))
+			return false;
+		//added by Zack : we cannot attack steathed units. Maybe checked in other palces too ?
+		//!! warning, this presumes that objA is attacking ObjB
+		if(static_cast<Unit *>(objB)->IsStealth())
 			return false;
 	}
 
@@ -334,4 +340,46 @@ inline bool isCombatSupport(Object* objA, Object* objB)// B combat supports A?
 	}
 	return combatSupport;
 }
+
+
+inline bool isAlliance(Object* objA)// A is alliance?
+{
+	FactionTemplateDBC * m_sw_faction = sFactionTmpStore.LookupEntry(11);
+	FactionDBC * m_sw_factionDBC = sFactionStore.LookupEntry(72);
+	if(!objA || objA->m_factionDBC == NULL || objA->m_faction == NULL)
+		return true;
+
+	if(m_sw_faction == objA->m_faction || m_sw_factionDBC == objA->m_factionDBC)
+		return true;
+
+	//bool hostile = false;
+	uint32 faction = m_sw_faction->Faction;
+	uint32 host = objA->m_faction->HostileMask;
+
+	if(faction & host)
+		return false;
+
+	// check friend/enemy list
+	for(uint32 i = 0; i < 4; i++)
+	{
+		if(objA->m_faction->EnemyFactions[i] == faction)
+			return false;
+	}
+
+	faction = objA->m_faction->Faction;
+	host = m_sw_faction->HostileMask;
+
+	if(faction & host)
+		return false;
+
+	// check friend/enemy list
+	for(uint32 i = 0; i < 4; i++)
+	{
+		if(objA->m_faction->EnemyFactions[i] == faction)
+			return false;
+	}
+
+	return true;
+}
+
 #endif

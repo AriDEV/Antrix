@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Object Type File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,7 +32,9 @@ bool ChatHandler::HandleAnnounceCommand(const char* args, WorldSession *m_sessio
 	string input2;
 
 	input2 = "|cffff6060<";
-	if (m_session->GetPermissionCount())   input2+="GM";
+	//if (m_session->GetPermissionCount())   input2+="GM";
+	if(m_session->CanUseCommand('z')) input2+="Admin";
+	else if(m_session->GetPermissionCount()) input2+="GM";
 	input2+=">|r|c1f40af20";
 	input2+=m_session->GetPlayer()->GetName();
 	input2+="|r|cffffffff broadcasts: |r";
@@ -49,7 +56,8 @@ bool ChatHandler::HandleWAnnounceCommand(const char* args, WorldSession *m_sessi
 	string input2;
 
 	input2 = "|cffff6060<";
-	if (m_session->GetPermissionCount())   input2+="GM";
+	if(m_session->CanUseCommand('z')) input2+="Admin";
+	else if(m_session->GetPermissionCount()) input2+="GM";
 	input2+=">|r|c1f40af20";
 	input2+=m_session->GetPlayer()->GetName();
 	input2+=":|r ";
@@ -118,9 +126,12 @@ bool ChatHandler::HandleGPSCommand(const char* args, WorldSession *m_session)
 	else
 		obj = (Object*)m_session->GetPlayer();
 
+	AreaTable * at = sAreaStore.LookupEntry(obj->GetMapMgr()->GetAreaID(obj->GetPositionX(), obj->GetPositionY()));
+	if(!at) return true;
+
 	char buf[256];
-	snprintf((char*)buf, 256, "|cff00ff00Current Position: |cffffffffMap: |cff00ff00%d |cffffffffX: |cff00ff00%f |cffffffffY: |cff00ff00%f |cffffffffZ: |cff00ff00%f |cffffffffOrientation: |cff00ff00%f|r",
-		(unsigned int)obj->GetMapId(), obj->GetPositionX(), obj->GetPositionY(), obj->GetPositionZ(), obj->GetOrientation());
+	snprintf((char*)buf, 256, "|cff00ff00Current Position: |cffffffffMap: |cff00ff00%d |cffffffffZone: |cff00ff00%u |cffffffffX: |cff00ff00%f |cffffffffY: |cff00ff00%f |cffffffffZ: |cff00ff00%f |cffffffffOrientation: |cff00ff00%f|r",
+		(unsigned int)obj->GetMapId(), at->ZoneId, obj->GetPositionX(), obj->GetPositionY(), obj->GetPositionZ(), obj->GetOrientation());
 	
 	
 	SystemMessage(m_session, buf);
@@ -150,6 +161,11 @@ bool ChatHandler::HandleKickCommand(const char* args, WorldSession *m_session)
 
 		BlueSystemMessage(m_session, "Attempting to kick %s from the server for \"%s\".", chr->GetName(), kickreason.c_str());
 		sGMLog.writefromsession(m_session, "Kicked player %s from the server for %s", chr->GetName(), kickreason.c_str());
+		if(!m_session->CanUseCommand('z') && chr->GetSession()->CanUseCommand('z'))
+		{
+			RedSystemMessage(m_session, "You cannot kick %s, as they are a higher level gm than you.", chr->GetName());
+			return true;
+		}
 		/*if(m_session->GetSecurity() < chr->GetSession()->GetSecurity())
 		{
 			SystemMessage(m_session, "You cannot kick %s, as he is a higher GM level than you.", chr->GetName());
@@ -225,6 +241,11 @@ bool ChatHandler::HandleAddInvItemCommand(const char *args, WorldSession *m_sess
 		Item *item;
 		item = objmgr.CreateItem( itemid, chr);
 		item->SetUInt32Value(ITEM_FIELD_STACK_COUNT, ((count > it->MaxCount) ? it->MaxCount : count));
+		if ( it->MaxCount == 1 && cCount )
+		{ // let's think of count as a randomprop
+			item->SetUInt32Value(ITEM_FIELD_RANDOM_PROPERTIES_ID, count);
+			item->ApplyRandomProperties();
+		}
 	  
 		if(!chr->GetItemInterface()->AddItemToFreeSlot(item))
 		{
@@ -275,22 +296,31 @@ bool ChatHandler::HandleSummonCommand(const char* args, WorldSession *m_session)
 
 		Player * plr = m_session->GetPlayer();
 
-		//incase they are ported out of a battleground
-		if(plr->m_bgInBattleground)
-			plr->GetCurrentBattleground()->RemovePlayer(plr, false);
-
 		if(plr->GetMapMgr()==chr->GetMapMgr())
 			chr->_Relocate(plr->GetMapId(),plr->GetPosition(),false,false);
 		else
 		{
-			sEventMgr.AddEvent(chr,&Player::EventPortToGM,plr,0,1,1);
+			sEventMgr.AddEvent(chr,&Player::EventPortToGM,plr,0,1,1,0);
 		}
 	}
 	else
 	{
-		char buf[256];
-		snprintf((char*)buf,256,"Player (%s) does not exist or is not logged in.", args);
-		SystemMessage(m_session, buf);
+		std::string name = args;
+		PlayerInfo * pinfo = objmgr.GetPlayerInfoByName(name);
+		if(!pinfo)
+		{
+			char buf[256];
+			snprintf((char*)buf,256,"Player (%s) does not exist.", args);
+			SystemMessage(m_session, buf);
+		}
+		else
+		{
+			Player * pPlayer = m_session->GetPlayer();
+			CharacterDatabase.Execute("UPDATE characters SET mapId = %u, positionX = %u, positionY = %u, positionZ = %u, zoneId = %u WHERE guid = %u;", pPlayer->GetMapId(), pPlayer->GetPositionX(), pPlayer->GetPositionY(), pPlayer->GetPositionZ(), pPlayer->GetZoneId(), pPlayer->GetGUIDLow());
+			char buf[256];
+			snprintf((char*)buf,256,"(Offline) %s has been summoned.", args);
+			SystemMessage(m_session, buf);
+		}
 	}
 	return true;
 }
@@ -446,7 +476,7 @@ bool ChatHandler::HandleLearnSkillCommand(const char *args, WorldSession *m_sess
 	if(plr->GetTypeId() != TYPEID_PLAYER) return false;
 	sGMLog.writefromsession(m_session, "used add skill of %u %u %u on %s", skill, min, max, plr->GetName());
 
-	plr->AddSkillLine(skill, min, max);   
+	plr->_AddSkillLine(skill, min, max);   
 
 	return true;
 }
@@ -477,17 +507,12 @@ bool ChatHandler::HandleModifySkillCommand(const char *args, WorldSession *m_ses
 	if(!plr) return false;
 	sGMLog.writefromsession(m_session, "used modify skill of %u %u on %s", skill, cnt,plr->GetName());
 
-	if(!plr->HasSkillLine(skill))
+	if(!plr->_HasSkillLine(skill))
 	{
 		SystemMessage(m_session, "Does not have skill line, adding.");
-		plr->AddSkillLine(skill, 1, 300);   
+		plr->_AddSkillLine(skill, 1, 300);   
 	} else {
-		if(cnt + plr->GetSkillAmt(skill) > plr->GetSkillMax(skill))
-			cnt = plr->GetSkillMax(skill) - plr->GetSkillAmt(skill);
-		for(uint32 l=0;l<cnt;l++)
-		{
-			plr->AdvanceSkillLine(skill);
-		}
+		plr->_AdvanceSkillLine(skill,cnt);
 	}	   
 
 	return true;
@@ -506,7 +531,7 @@ bool ChatHandler::HandleRemoveSkillCommand(const char *args, WorldSession *m_ses
 	Player *plr = getSelectedChar(m_session, true);
 	if(!plr) return true;
 	sGMLog.writefromsession(m_session, "used remove skill of %u on %s", skill, plr->GetName());
-	plr->RemoveSkillLine(skill);
+	plr->_RemoveSkillLine(skill);
 	SystemMessageToPlr(plr, "%s removed skill line %d from you. ", m_session->GetPlayer()->GetName(), skill);
 	return true;
 }
@@ -677,4 +702,5 @@ bool ChatHandler::HandleSilentPlayerCommand(const char* args, WorldSession *m_se
 
 	return true;
 }
+
 

@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Packet Handler File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -17,7 +22,7 @@
 void WorldSession::HandleTaxiNodeStatusQueryOpcode( WorldPacket & recv_data )
 {
 	if(!_player->IsInWorld()) return;
-	sLog.outDebug( "WORLD: Recieved CMSG_TAXINODE_STATUS_QUERY" );
+	sLog.outDebug( "WORLD: Received CMSG_TAXINODE_STATUS_QUERY" );
 
 	uint64 guid;
 	uint32 curloc;
@@ -31,7 +36,7 @@ void WorldSession::HandleTaxiNodeStatusQueryOpcode( WorldPacket & recv_data )
 	field = (uint8)((curloc - 1) / 32);
 	submask = 1<<((curloc-1)%32);
 
-	WorldPacket data;
+	WorldPacket data(9);
 	data.Initialize( SMSG_TAXINODE_STATUS );
 	data << guid;
 
@@ -53,7 +58,7 @@ void WorldSession::HandleTaxiNodeStatusQueryOpcode( WorldPacket & recv_data )
 void WorldSession::HandleTaxiQueryAvaibleNodesOpcode( WorldPacket & recv_data )
 {
 	if(!_player->IsInWorld()) return;
-	sLog.outDebug( "WORLD: Recieved CMSG_TAXIQUERYAVAILABLENODES" );
+	sLog.outDebug( "WORLD: Received CMSG_TAXIQUERYAVAILABLENODES" );
 	uint64 guid;
 	recv_data >> guid;
 	Creature *pCreature = _player->GetMapMgr()->GetCreature(guid);
@@ -101,7 +106,7 @@ void WorldSession::SendTaxiList(Creature* pCreature)
 		TaxiMask[i] &= GetPlayer( )->GetTaximask(i);
 	}
 
-	WorldPacket data;
+	WorldPacket data(48);
 	data.Initialize( SMSG_SHOWTAXINODES );
 	data << uint32( 1 ) << guid;
 	data << uint32( curloc );
@@ -117,7 +122,7 @@ void WorldSession::SendTaxiList(Creature* pCreature)
 void WorldSession::HandleActivateTaxiOpcode( WorldPacket & recv_data )
 {
 	if(!_player->IsInWorld()) return;
-	sLog.outDebug( "WORLD: Recieved CMSG_ACTIVATETAXI" );
+	sLog.outDebug( "WORLD: Received CMSG_ACTIVATETAXI" );
 
 	uint64 guid;
 	uint32 sourcenode, destinationnode;
@@ -226,7 +231,7 @@ void WorldSession::HandleActivateTaxiOpcode( WorldPacket & recv_data )
 void WorldSession::HandleMultipleActivateTaxiOpcode(WorldPacket & recvPacket)
 {
 	if(!_player->IsInWorld()) return;
-	sLog.outDebug( "WORLD: Recieved CMSG_ACTIVATETAXI" );
+	sLog.outDebug( "WORLD: Received CMSG_ACTIVATETAXI" );
 
 	uint64 guid;
 	uint32 moocost;

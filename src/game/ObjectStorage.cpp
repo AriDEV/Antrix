@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * Object Storage Format Strings / Instantiation
- * Copyright (c) 2007 Burlex, Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -19,7 +24,7 @@
 const char * gItemPrototypeFormat						= "uuuussssuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuffuffuffuffuffuuuuuuuuuufuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuusuuuuuuuuuuuuuuuuuuuuuuuuuuu";
 const char * gCreatureNameFormat						= "ussuuuuuuuffcc";
 const char * gGameObjectNameFormat						= "uuusuuuuuuuuuuuuuuuuuuuuuuuu";
-const char * gCreatureProtoFormat						= "uuuuufuuffuffuuuuuuuuuuuuuuuuuuffsuu";
+const char * gCreatureProtoFormat						= "uuuuuuufuuffuffuuuuuuuuuuuuuuuuuuffsuuuu";
 const char * gAreaTriggerFormat							= "uuuusffffuu";
 const char * gItemPageFormat							= "usu";
 const char * gNpcTextFormat								= "ufssuuuuuuufssuuuuuuufssuuuuuuufssuuuuuuufssuuuuuuufssuuuuuuufssuuuuuuufssuuuuuuu";
@@ -30,22 +35,24 @@ const char * gTeleportCoordFormat						= "uxufffx";
 const char * gPvPAreaFormat								= "ush";
 const char * gFishingFormat								= "uuu";
 const char * gWorldMapInfoFormat						= "uuuuufffusuuuuu";
+const char * gZoneGuardsFormat							= "uuu";
 
 /** SQLStorage symbols
  */
-SQLStorage<ItemPrototype, ArrayStorageContainer<ItemPrototype> >				ItemPrototypeStorage;
-SQLStorage<CreatureInfo, HashMapStorageContainer<CreatureInfo> >				CreatureNameStorage;
-SQLStorage<GameObjectInfo, HashMapStorageContainer<GameObjectInfo> >			GameObjectNameStorage;
-SQLStorage<CreatureProto, HashMapStorageContainer<CreatureProto> >				CreatureProtoStorage;
-SQLStorage<AreaTrigger, HashMapStorageContainer<AreaTrigger> >					AreaTriggerStorage;
-SQLStorage<ItemPage, HashMapStorageContainer<ItemPage> >						ItemPageStorage;
-SQLStorage<Quest, HashMapStorageContainer<Quest> >								QuestStorage;
-SQLStorage<GossipText, HashMapStorageContainer<GossipText> >					NpcTextStorage;
-SQLStorage<SpellExtraInfo, HashMapStorageContainer<SpellExtraInfo> >			SpellExtraStorage;
-SQLStorage<GraveyardTeleport, HashMapStorageContainer<GraveyardTeleport> >		GraveyardStorage;
-SQLStorage<TeleportCoords, HashMapStorageContainer<TeleportCoords> >			TeleportCoordStorage;
-SQLStorage<FishingZoneEntry, HashMapStorageContainer<FishingZoneEntry> >		FishingZoneStorage;
-SQLStorage<MapInfo, HashMapStorageContainer<MapInfo> >							WorldMapInfoStorage;
+SERVER_DECL SQLStorage<ItemPrototype, ArrayStorageContainer<ItemPrototype> >				ItemPrototypeStorage;
+SERVER_DECL SQLStorage<CreatureInfo, HashMapStorageContainer<CreatureInfo> >				CreatureNameStorage;
+SERVER_DECL SQLStorage<GameObjectInfo, HashMapStorageContainer<GameObjectInfo> >			GameObjectNameStorage;
+SERVER_DECL SQLStorage<CreatureProto, HashMapStorageContainer<CreatureProto> >				CreatureProtoStorage;
+SERVER_DECL SQLStorage<AreaTrigger, HashMapStorageContainer<AreaTrigger> >					AreaTriggerStorage;
+SERVER_DECL SQLStorage<ItemPage, HashMapStorageContainer<ItemPage> >						ItemPageStorage;
+SERVER_DECL SQLStorage<Quest, HashMapStorageContainer<Quest> >								QuestStorage;
+SERVER_DECL SQLStorage<GossipText, HashMapStorageContainer<GossipText> >					NpcTextStorage;
+SERVER_DECL SQLStorage<SpellExtraInfo, HashMapStorageContainer<SpellExtraInfo> >			SpellExtraStorage;
+SERVER_DECL SQLStorage<GraveyardTeleport, HashMapStorageContainer<GraveyardTeleport> >		GraveyardStorage;
+SERVER_DECL SQLStorage<TeleportCoords, HashMapStorageContainer<TeleportCoords> >			TeleportCoordStorage;
+SERVER_DECL SQLStorage<FishingZoneEntry, HashMapStorageContainer<FishingZoneEntry> >		FishingZoneStorage;
+SERVER_DECL SQLStorage<MapInfo, ArrayStorageContainer<MapInfo> >							WorldMapInfoStorage;
+SERVER_DECL SQLStorage<ZoneGuardEntry, HashMapStorageContainer<ZoneGuardEntry> >			ZoneGuardStorage;
 
 void ObjectMgr::LoadExtraCreatureProtoStuff()
 {
@@ -64,8 +71,10 @@ void ObjectMgr::LoadExtraCreatureProtoStuff()
 					itr->Get()->start_auras.insert( id );
 			}
 
-			if(!itr->Get()->Health)
-				itr->Get()->Health = 1;
+			if(!itr->Get()->MinHealth)
+				itr->Get()->MinHealth = 1;
+			if(!itr->Get()->MaxHealth)
+				itr->Get()->MaxHealth = 1;
 
 			cn->m_canFlee = cn->m_canRangedAttack = cn->m_canCallForHelp = false;
 			cn->m_fleeHealth = 0.0f;
@@ -86,7 +95,10 @@ void ObjectMgr::LoadExtraCreatureProtoStuff()
 		while(!itr->AtEnd())
 		{
 			ci = itr->Get();
+
 			ci->lowercase_name = string(ci->Name);
+			for(uint32 j = 0; j < ci->lowercase_name.length(); ++j)
+				ci->lowercase_name[j] = tolower(ci->lowercase_name[j]); // Darvaleo 2008/08/15 - Copied lowercase conversion logic from ItemPrototype task
 
 			if(!itr->Inc())
 				break;
@@ -114,13 +126,17 @@ void ObjectMgr::LoadExtraCreatureProtoStuff()
 
 		sp = new AI_Spell;
 		sp->entryId = fields[0].GetUInt32();
-		sp->spell = ((FastIndexedDataStore<SpellEntry>*)SpellStore::getSingletonPtr())->LookupEntryForced(fields[5].GetUInt32());
 		sp->agent = fields[1].GetUInt16();
 		sp->procChance = fields[3].GetUInt32();
-		sp->spellType = fields[6].GetUInt32();;
+		//sp->procCountDB = fields[4].GetUInt32();
+		sp->spell = ((FastIndexedDataStore<SpellEntry>*)SpellStore::getSingletonPtr())->LookupEntryForced(fields[5].GetUInt32());
+		sp->spellType = fields[6].GetUInt32();
 		sp->spelltargetType = fields[7].GetUInt32();
 		sp->cooldown = fields[8].GetFloat();
 		sp->floatMisc1 = fields[9].GetFloat();
+/*		if (!sp->procCountDB) 
+			sp->procCount = uint32(-1);
+		else sp->procCount = sp->procCountDB;*/
 		sp->Misc2 = fields[10].GetUInt32();
 		if(sp->agent == AGENT_SPELL)
 		{
@@ -139,10 +155,45 @@ void ObjectMgr::LoadExtraCreatureProtoStuff()
 				continue;
 			}
 
-			/*sp->minrange = GetMinRange(sSpellRange.LookupEntry(sp->spell->rangeIndex));*/
-			// burlex: minimum range? you can go f*ck yourself. it causes really strange shit in movement.
-			sp->minrange = 0;
+			sp->minrange = GetMinRange(sSpellRange.LookupEntry(sp->spell->rangeIndex));
 			sp->maxrange = GetMaxRange(sSpellRange.LookupEntry(sp->spell->rangeIndex));
+
+			//omg the poor darling has no clue about making ai_agents
+			if(sp->cooldown==-1)
+			{
+				//now this will not be exact cooldown but maybe a bigger one to not make him spam spells to often
+				int cooldown;
+				SpellDuration *sd=sSpellDuration.LookupEntry(sp->spell->DurationIndex);
+				int Dur=0;
+				int Casttime=0;//most of the time 0
+				int RecoveryTime=sp->spell->RecoveryTime;
+	            if(sp->spell->DurationIndex)
+		            Dur =::GetDuration(sd);
+				Casttime=GetCastTime(sCastTime.LookupEntry(sp->spell->CastingTimeIndex));
+				cooldown=Dur+Casttime+RecoveryTime;
+				if(cooldown<0)
+					sp->cooldown=0x00FFFFFF;//huge value that should not loop while adding some timestamp to it
+				else sp->cooldown=cooldown;
+			}
+
+			/*
+			//now apply the morron filter
+			if(sp->procChance==0)
+			{
+				//printf("SpellId %u in ai_agent for %u is invalid.\n", (unsigned int)fields[5].GetUInt32(), (unsigned int)sp->entryId);
+				delete sp;
+				continue;
+			}
+			if(sp->spellType==0)
+			{
+				//right now only these 2 are used
+				if(IsBeneficSpell(sp->spell))
+					sp->spellType==STYPE_HEAL;
+				else sp->spellType==STYPE_BUFF;
+			}
+			if(sp->spelltargetType==0)
+				sp->spelltargetType = RecommandAISpellTargetType(sp->spell);
+				*/
 		}
 
 		if(sp->agent == AGENT_RANGED)
@@ -233,7 +284,8 @@ void Storage_FillTaskList(TaskList & tl)
 	make_task(TeleportCoordStorage, TeleportCoords, HashMapStorageContainer, "teleport_coords", gTeleportCoordFormat);
 	make_task(FishingZoneStorage, FishingZoneEntry, HashMapStorageContainer, "fishing", gFishingFormat);
 	make_task(NpcTextStorage, GossipText, HashMapStorageContainer, "npc_text", gNpcTextFormat);
-	make_task(WorldMapInfoStorage, MapInfo, HashMapStorageContainer, "worldmap_info", gWorldMapInfoFormat);
+	make_task(WorldMapInfoStorage, MapInfo, ArrayStorageContainer, "worldmap_info", gWorldMapInfoFormat);
+	make_task(ZoneGuardStorage, ZoneGuardEntry, HashMapStorageContainer, "zoneguards", gZoneGuardsFormat);
 }
 
 void Storage_Cleanup()
@@ -266,6 +318,7 @@ void Storage_Cleanup()
 	FishingZoneStorage.Cleanup();
 	NpcTextStorage.Cleanup();
 	WorldMapInfoStorage.Cleanup();
+	ZoneGuardStorage.Cleanup();
 }
 
 bool Storage_ReloadTable(const char * TableName)
@@ -297,6 +350,8 @@ bool Storage_ReloadTable(const char * TableName)
 		TeleportCoordStorage.Reload();
 	else if(!stricmp(TableName, "worldmap_info"))		// WorldMapInfo
 		WorldMapInfoStorage.Reload();
+	else if(!stricmp(TableName, "zoneguards"))
+		ZoneGuardStorage.Reload();
 	else
 		return false;
 	return true;

@@ -1,3 +1,22 @@
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
 #include "Common.h"
 #include "Mutex.h"
 
@@ -6,11 +25,6 @@
 /* Windows Critical Section Implementation */
 Mutex::Mutex() { InitializeCriticalSection(&cs); }
 Mutex::~Mutex() { DeleteCriticalSection(&cs); }
-
-void Mutex::Acquire() { EnterCriticalSection(&cs); }
-void Mutex::Release() { LeaveCriticalSection(&cs); }
-
-bool Mutex::AttemptAcquire() { return TryEnterCriticalSection(&cs); }
 
 #else
 
@@ -38,10 +52,5 @@ Mutex::Mutex()
 }
 
 Mutex::~Mutex() { pthread_mutex_destroy(&mutex); }
-
-void Mutex::Acquire() { pthread_mutex_lock(&mutex); }
-void Mutex::Release() { pthread_mutex_unlock(&mutex); }
-bool Mutex::AttemptAcquire() { return (pthread_mutex_trylock(&mutex) == 0); }
-
 
 #endif

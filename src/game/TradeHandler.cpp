@@ -1,14 +1,19 @@
-/****************************************************************************
+/*
+ * Ascent MMORPG Server
+ * Copyright (C) 2005-2007 Ascent Team <http://www.ascentemu.com/>
  *
- * General Packet Handler File
- * Copyright (c) 2007 Antrix Team
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * This file may be distributed under the terms of the Q Public License
- * as defined by Trolltech ASA of Norway and appearing in the file
- * COPYING included in the packaging of this file.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE
- * WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -132,13 +137,18 @@ void WorldSession::HandleCancelTrade(WorldPacket & recv_data)
 	if(_player->mTradeTarget == 0 || _player->mTradeStatus == TRADE_STATUS_COMPLETE)
 		return;
 
+    uint32 TradeStatus = TRADE_STATUS_CANCELLED;
+    OutPacket(SMSG_TRADE_STATUS, 4, &TradeStatus);
+
 	Player * plr = _player->GetTradeTarget();
-	uint32 TradeStatus = TRADE_STATUS_CANCELLED;
-	OutPacket(SMSG_TRADE_STATUS, 4, &TradeStatus);
-	if(plr->m_session && plr->m_session->GetSocket())
+    if(plr)
+    {
+        if(plr->m_session && plr->m_session->GetSocket())
 		plr->m_session->OutPacket(SMSG_TRADE_STATUS, 4, &TradeStatus);
 	
-	plr->mTradeTarget = 0;
+	    plr->mTradeTarget = 0;
+    }
+	
 	_player->mTradeTarget = 0;
 }
 
@@ -182,7 +192,8 @@ void WorldSession::HandleSetTradeGold(WorldPacket & recv_data)
 	if(_player->mTradeTarget == 0)
 		return;
 
-	uint32 Gold = *(uint32*)recv_data.contents();
+	uint32 Gold;
+	recv_data >> Gold;
 
 	if(_player->mTradeGold != Gold)
 	{
@@ -248,7 +259,13 @@ void WorldSession::HandleAcceptTrade(WorldPacket & recv_data)
 			{
 				Guid = _player->mTradeItems[Index] ? _player->mTradeItems[Index]->GetGUID() : 0;
 				if(Guid != 0)
+				{
+					if(GetPermissionCount()>0)
+					{
+						sGMLog.writefromsession(this, "traded item %s to %s", _player->mTradeItems[Index]->GetProto()->Name1, pTarget->GetName());
+					}
 					pItem = _player->m_ItemInterface->SafeRemoveAndRetreiveItemByGuid(Guid, true);
+				}
 
 				Guid = pTarget->mTradeItems[Index] ? pTarget->mTradeItems[Index]->GetGUID() : 0;
 				if(Guid != 0)
